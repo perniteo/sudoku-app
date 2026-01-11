@@ -3,9 +3,11 @@ package io.github.perniteo.sudoku.domain;
 public class Cell {
 
   private int value;
+  private final boolean fixed;
 
-  public Cell() {
-    this.value = 0;
+  public Cell(int value, boolean fixed) {
+    this.value = value;
+    this.fixed = fixed;
   }
 
   public int getValue() {
@@ -13,6 +15,9 @@ public class Cell {
   }
 
   public void setValue(int value) {
+    if (fixed) {
+      throw new IllegalStateException("fixed cell");
+    }
     this.value = value;
   }
 
@@ -20,4 +25,7 @@ public class Cell {
     return value == 0;
   }
 
+  public boolean isFixed() {
+    return fixed;
+  }
 }

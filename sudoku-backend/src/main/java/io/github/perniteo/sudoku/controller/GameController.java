@@ -1,7 +1,7 @@
 package io.github.perniteo.sudoku.controller;
 
 
-import io.github.perniteo.sudoku.dto.GameStartResponse;
+import io.github.perniteo.sudoku.controller.dto.GameStartResponse;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;

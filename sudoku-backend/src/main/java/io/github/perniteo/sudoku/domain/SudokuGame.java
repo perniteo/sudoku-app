@@ -5,37 +5,62 @@ import java.time.LocalDateTime;
 
 public class SudokuGame {
 
-  private final SudokuBoard board;
   private final LocalDateTime startedAt;
-  private boolean cleared;
+  private GameStatus status;
   private final SudokuBoard puzzleBoard;
   private final SudokuBoard answerBoard;
+  private int life;
 
   public SudokuGame(GeneratedSudoku generated) {
     this.puzzleBoard = generated.getPuzzleBoard();
     this.answerBoard = generated.getAnswerBoard();
-    this.board = new SudokuBoard();
     this.startedAt = LocalDateTime.now();
-    this.cleared = false;
+    this.status = GameStatus.PLAYING;
+    this.life = 3;
   }
 
   public int getValue(int row, int col) {
-    return board.getValue(row, col);
+    return puzzleBoard.getValue(row, col);
   }
 
   public LocalDateTime getStartedAt() {
     return startedAt;
   }
 
-  public boolean isCleared() {
-    return cleared;
+  public GameStatus getStatus() {
+    return status;
   }
 
-  public void placeNumber(int row, int col, int value) {
-    if (board.getValue(row, col) != 0) {
-      throw new IllegalStateException("cell already filled");
+  public int getLife() {
+    return life;
+  }
+
+  public PlaceResult placeNumber(int row, int col, int value) {
+    if (status != GameStatus.PLAYING) {
+      return PlaceResult.GAME_OVER;
     }
-    board.place(row, col, value);
-  }
 
+    if (puzzleBoard.isFixed(row, col)) {
+      return PlaceResult.ALREADY_FIXED;
+    }
+
+    if (answerBoard.isCorrect(row, col, value)) {
+      puzzleBoard.place(row, col, value);
+
+      if (puzzleBoard.isCompleted()) {
+        status = GameStatus.COMPLETED;
+      }
+
+      return PlaceResult.CORRECT;
+    }
+
+    life--;
+
+    if (life <= 0) {
+      status = GameStatus.FAILED;
+      return PlaceResult.GAME_OVER;
+    }
+
+    return PlaceResult.WRONG;
+  }
 }

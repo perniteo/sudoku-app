@@ -1,4 +1,4 @@
-package io.github.perniteo.sudoku.dto;
+package io.github.perniteo.sudoku.controller.dto;
 
 public class GameStartResponse {
 

@@ -5,7 +5,9 @@ public enum PlaceResult {
   CORRECT(true, "정답입니다"),
   WRONG(false, "틀렸습니다"),
   ALREADY_FIXED(false, "이미 고정된 칸입니다"),
-  GAME_OVER(false, "게임 오버");
+  ERASE(true, "해당 칸을 지웁니다"),
+  GAME_OVER(false, "게임 오버"),
+  COMPLETED(true, "승리");
 
   private final boolean success;
   private final String message;

@@ -36,31 +36,40 @@ public class SudokuGame {
   }
 
   public PlaceResult placeNumber(int row, int col, int value) {
-    if (status != GameStatus.PLAYING) {
-      return PlaceResult.GAME_OVER;
+    if (status != GameStatus.PLAYING) return PlaceResult.GAME_OVER;
+
+    if (puzzleBoard.isFixed(row, col)) return PlaceResult.ALREADY_FIXED;
+
+    if (value == 0) {
+      puzzleBoard.place(row, col, 0);
+      return PlaceResult.ERASE;
     }
 
-    if (puzzleBoard.isFixed(row, col)) {
-      return PlaceResult.ALREADY_FIXED;
-    }
-
-    if (answerBoard.isCorrect(row, col, value)) {
-      puzzleBoard.place(row, col, value);
-
-      if (puzzleBoard.isCompleted()) {
-        status = GameStatus.COMPLETED;
+    try {
+    puzzleBoard.place(row, col, value);
+    } catch (IllegalArgumentException e) {
+      life--;
+      if (life <= 0) {
+        status = GameStatus.FAILED;
+        return PlaceResult.GAME_OVER;
       }
-
-      return PlaceResult.CORRECT;
+      throw e;
     }
 
-    life--;
-
-    if (life <= 0) {
-      status = GameStatus.FAILED;
-      return PlaceResult.GAME_OVER;
+    if (answerBoard.getValue(row, col) != value) {
+      life--;
+      if (life <= 0) {
+        status = GameStatus.FAILED;
+        return PlaceResult.GAME_OVER;
+      }
+      return PlaceResult.WRONG;
     }
 
-    return PlaceResult.WRONG;
+    if (puzzleBoard.isCompleted()) {
+      status = GameStatus.COMPLETED;
+      return PlaceResult.COMPLETED;
+    }
+
+    return PlaceResult.CORRECT;
   }
 }

@@ -99,3 +99,73 @@
   - Game / Board 상태 저장 구조 설계
 - API 예외 처리 정교화 (존재하지 않는 gameId 등)
 - Frontend 연동을 통한 실제 플레이 흐름 완성
+
+---
+## Day 5 (2026-01-16) – Domain Validation 강화 & Front–Backend 연결 정리
+
+### 오늘 확정 및 구현한 내용
+
+#### 1. SudokuBoard 규칙 검증(validation) 구현
+- Board 레벨에서 **스도쿠 규칙(row / col / box) 검증 로직 추가**
+- `place()` 호출 시 다음을 모두 검증하도록 확정
+  - 좌표 범위 검증
+  - 값 범위 검증 (0 ~ 9)
+  - 행 / 열 / 3×3 박스 중복 검사
+- `value = 0`은 **지우기(ERASE)** 로 간주하여 규칙 검사 스킵
+- Board는 **규칙 검증과 상태 보관만 담당**하도록 책임 고정
+
+---
+
+#### 2. Game vs Board 책임 분리 명확화
+- **규칙 유효성**: SudokuBoard
+- **정답 판정 / life 감소 / 게임 상태 전환**: SudokuGame
+- answerBoard는 **플레이 중 정답 판정 기준**으로 유지
+- “규칙상 가능”과 “정답 여부”를 완전히 다른 개념으로 분리
+
+---
+
+#### 3. 입력 정책 및 Life 감소 규칙 최종 확정
+- 스도쿠는 퍼즐이 아닌 **게임(Game)** 으로 정의
+- 룰상 가능한 입력은 **모두 허용**
+- 다음 모든 경우를 **오입력으로 간주하여 life 감소**:
+  - 고정된 칸 입력 시도
+  - row / col / box 규칙 위반
+  - answerBoard 기준 오답 입력
+- Life 감소하지 않는 유일한 경우:
+  - `ERASE (value = 0)`
+
+> 입력은 비용이 드는 행동,  
+> 추론(memo)은 비용이 들지 않는 행동으로 설계
+
+---
+
+#### 4. ERASE 개념 도입
+- `value = 0`을 명시적인 **지우기 동작**으로 정의
+- ERASE는 언제나 허용
+- life 감소 없음
+- 잘못된 입력 후 수정 가능한 정상적인 플레이 흐름 보장
+
+---
+
+#### 5. PlaceResult 확장 및 의미 고정
+- PlaceResult에 게임 상태를 명확히 표현하는 값들 추가
+  - CORRECT / WRONG / ERASE / ALREADY_FIXED / GAME_OVER / COMPLETED
+- Result 자체가 성공 여부와 메시지를 포함하도록 설계
+- Controller / Front가 별도 판단 로직을 가지지 않도록 구조 정리
+
+---
+
+#### 6. Front–Backend 연결 구조 정리
+- Front에서 **게임 시작 → 게임 상태 유지 → 입력 요청** 흐름 확정
+- `/games` : 게임 생성
+- `/games/{id}/place` : 숫자 입력 및 결과 수신
+- 프론트 상태를 `game(id, board, status, life)` 단위로 관리하도록 수정
+- Board는 서버 응답 기준으로만 갱신 (프론트 규칙 판단 없음)
+
+---
+
+### 현재 상태
+- Domain 레벨의 규칙, 검증, life 정책 모두 고정
+- Board / Game / answerBoard 역할 명확
+- Front–Backend 연결 흐름 정상 동작 확인
+- 이후 작업은 테스트, UX, DB 연동 등 구현 확장 단계로 진행 가능

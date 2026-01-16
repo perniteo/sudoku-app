@@ -1,52 +1,79 @@
 import { useState } from "react";
-
 import SudokuBoard from "./components/SudokuBoard";
 
 function App() {
-  const [status, setStatus] = useState("아직 안 눌림");
-  const [gameData, setGameData] = useState(null);
+  // game = { id, board, status, life }
+  const [game, setGame] = useState(null);
+  const [statusMessage, setStatusMessage] = useState("대기중");
 
-  const checkBackend = async () => {
-    setStatus("눌림, 응답 대기중...");
+  // 게임 시작: POST /games
+  const startGame = async () => {
+    setStatusMessage("게임 생성 중...");
     try {
-      await fetch("/api/health2")
-        .then((res) => res.json())
-        .then((data) => setStatus(data.status));
-    } catch (error) {
-      setStatus("에러 발생: " + error.message);
-    }
-  };
-
-  const checkPostResponse = async () => {
-    setStatus("POST 요청 눌림, 응답 대기중...");
-    try {
-      await fetch("/api/game/start", {
+      const res = await fetch("/games", {
         method: "POST",
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          console.log("Backend response:", data);
-          setGameData(data);
-          setStatus(data.status);
-        });
+      });
+
+      const data = await res.json();
+      console.log("Game started:", data);
+
+      setGame(data);
+      setStatusMessage(data.status);
     } catch (error) {
-      setStatus("에러 발생: " + error.message);
+      setStatusMessage("에러: " + error.message);
     }
   };
+
+  // 숫자 입력: POST /games/{id}/place
+  const placeNumber = async (row, col, value) => {
+    if (!game) return;
+
+    try {
+      const res = await fetch(`/games/${game.id}/place`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          row,
+          col,
+          value,
+        }),
+      });
+
+      const data = await res.json();
+      console.log("Place result:", data);
+
+      setGame((prev) => ({
+        ...prev,
+        board: data.board,
+        status: data.status,
+        life: data.life,
+      }));
+
+      setStatusMessage(`${data.status} (life: ${data.life})`);
+    } catch (error) {
+      setStatusMessage("에러: " + error.message);
+    }
+  };
+
   return (
     <div style={{ padding: "20px" }}>
-      <h1>React Button Fetch Test</h1>
-      <button onClick={checkBackend}>Check Backend Status</button>
-      <button onClick={checkPostResponse} style={{ marginLeft: "10px" }}>
-        Send POST Request
-      </button>
-      {gameData && gameData.board && (
-        <div>
-          <h2>Sudoku Board</h2>
-          <SudokuBoard board={gameData.board} />
-        </div>
+      <h1>Sudoku</h1>
+
+      {!game && <button onClick={startGame}>게임 시작</button>}
+
+      {game && (
+        <>
+          <p>
+            상태: {game.status} / life: {game.life}
+          </p>
+
+          <SudokuBoard board={game.board} onPlace={placeNumber} />
+        </>
       )}
-      <p>Backend status: {status}</p>
+
+      <p>{statusMessage}</p>
     </div>
   );
 }

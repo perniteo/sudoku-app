@@ -45,17 +45,6 @@ public class SudokuGame {
       return PlaceResult.ERASE;
     }
 
-    try {
-    puzzleBoard.place(row, col, value);
-    } catch (IllegalArgumentException e) {
-      life--;
-      if (life <= 0) {
-        status = GameStatus.FAILED;
-        return PlaceResult.GAME_OVER;
-      }
-      throw e;
-    }
-
     if (answerBoard.getValue(row, col) != value) {
       life--;
       if (life <= 0) {
@@ -64,6 +53,8 @@ public class SudokuGame {
       }
       return PlaceResult.WRONG;
     }
+
+    puzzleBoard.place(row, col, value);
 
     if (puzzleBoard.isCompleted()) {
       status = GameStatus.COMPLETED;

@@ -1,11 +1,17 @@
-function SudokuBoard({ board }) {
+function SudokuBoard({ board, onPlace, selectedCell, onSelectCell }) {
   return (
-    <div style={{ marginTop: "20px" }}>
+    <div className="board" style={{ marginTop: "20px" }}>
       {board.map((row, rIdx) => (
         <div key={rIdx} style={{ display: "flex" }}>
           {row.map((cell, cIdx) => (
             <div
-              key={cIdx}
+              key={`${rIdx}-${cIdx}`}
+              className={`cell ${
+                selectedCell?.row === rIdx && selectedCell?.col === cIdx
+                  ? "selected"
+                  : ""
+              }`}
+              onClick={() => onSelectCell({ row: rIdx, col: cIdx })}
               style={{
                 width: "32px",
                 height: "32px",

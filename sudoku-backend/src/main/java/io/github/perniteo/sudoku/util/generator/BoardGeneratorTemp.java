@@ -1,10 +1,15 @@
 package io.github.perniteo.sudoku.util.generator;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.perniteo.sudoku.dto.SudokuBoardData;
 import java.io.*;
 import java.util.*;
-import org.apache.tomcat.util.net.jsse.JSSEUtil;
+import javax.sql.DataSource;
+import org.springframework.boot.jdbc.DataSourceBuilder;
+import org.springframework.context.annotation.Bean;
 
-public class boardGeneratorTemp {
+
+public class BoardGeneratorTemp {
 
   static ArrayList<int[][]> answerBoards;
   static int[][] board;
@@ -259,78 +264,24 @@ public class boardGeneratorTemp {
     return true;
   }
 
-  public static void boardRemover(int[][] board) {
+  public static void boardRemover(int[][] board, int shuffled) {
     // 11 shuffled = expert+ ~
     // 8-10 shuffled = hard ~ expert+
     // 6~8 shuffled = normal ~ hard+
     // 4~6 shuffled = easy ~ normal+
 
-    shuffled();
-
-    for (int i = 0; i < 9; i++) {
-      board[i][list.get(i) - 1] = 0;
+    for (int s = 0; s < shuffled; s++) {
+      shuffled();
+      if (s % 2 == 0) {
+        for (int i = 0; i < 9; i++) {
+          board[i][list.get(i) - 1] = 0;
+        }
+      } else {
+        for (int i = 0; i < 9; i++) {
+          board[list.get(i) - 1][i] = 0;
+        }
+      }
     }
-
-    shuffled();
-
-    for (int i = 0; i < 9; i++) {
-      board[list.get(i) - 1][i] = 0;
-    }
-
-    shuffled();
-
-    for (int i = 0; i < 9; i++) {
-      board[i][list.get(i) - 1] = 0;
-    }
-
-    shuffled();
-
-    for (int i = 0; i < 9; i++) {
-      board[list.get(i) - 1][i] = 0;
-    }
-
-    shuffled();
-
-    for (int i = 0; i < 9; i++) {
-      board[i][list.get(i) - 1] = 0;
-    }
-
-    shuffled();
-
-    for (int i = 0; i < 9; i++) {
-      board[list.get(i) - 1][i] = 0;
-    }
-
-    shuffled();
-
-    for (int i = 0; i < 9; i++) {
-      board[i][list.get(i) - 1] = 0;
-    }
-
-    shuffled();
-
-    for (int i = 0; i < 9; i++) {
-      board[list.get(i) - 1][i] = 0;
-    }
-
-    shuffled();
-
-    for (int i = 0; i < 9; i++) {
-      board[i][list.get(i) - 1] = 0;
-    }
-
-    shuffled();
-
-    for (int i = 0; i < 9; i++) {
-      board[list.get(i) - 1][i] = 0;
-    }
-
-    shuffled();
-
-    for (int i = 0; i < 9; i++) {
-      board[i][list.get(i) - 1] = 0;
-    }
-
   }
 
   static boolean uniqueAnswerFinder(int[][] board) {
@@ -341,6 +292,28 @@ public class boardGeneratorTemp {
     return solutionCount == 1;
   }
 
+  public ArrayList<SudokuBoardData> generate(int level, int number) {
+    ArrayList<SudokuBoardData> generated = new ArrayList<>();
+    for (int i = 1; i <= 9; i++) list.add(i);
+    for (int i = 0; i < number; i++) {
+      int[][] cBoard = createBoard3();
+      int[][] answer = new int[9][9];
+      for (int r = 0; r < 9; r++) {
+        System.arraycopy(cBoard[r], 0, answer[r], 0, 9);
+      }
+      boardRemover(cBoard, level);
+      if (uniqueAnswerFinder(cBoard)) {
+        generated.add(SudokuBoardData.builder().initialBoard(cBoard)
+            .solutionBoard(answer).difficulty(level).build());
+      }
+    }
+
+    return generated;
+  }
+
+
+
+  // 간이 실험
   public static void main(String[] args) throws IOException{
     BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
 
@@ -350,33 +323,44 @@ public class boardGeneratorTemp {
 
     answerBoards = new ArrayList<>();
 
+    ObjectMapper mapper = new ObjectMapper();
+
     for (int i = 1; i <= 9; i++) list.add(i);
 
 
-    for (int i = 0; i < 5000; i++) {
-      long startTime = System.nanoTime();
-      int[][] board2 = createBoard3();
-      long endTime = System.nanoTime();
-      double duration = (endTime - startTime) / 1_000_000.0;
+//    List<SudokuBoardData> sudokuBoardData = generate(4, 100);
 
-      answerBoards.add(board2);
+//    for (SudokuBoardData data : sudokuBoardData) {
+//      String startJson = mapper.writeValueAsString(data.getInitialBoard());
+//      String answerJson = mapper.writeValueAsString(data.getSolutionBoard());
+//    }
 
+//    for (int i = 0; i < 5000; i++) {
+//      long startTime = System.nanoTime();
+//      int[][] board2 = createBoard3();
+//      long endTime = System.nanoTime();
+//      double duration = (endTime - startTime) / 1_000_000.0;
+//
+//      answerBoards.add(board2);
+//
 //      System.out.println("logic duration : " + duration + " ms");
-    }
+//    }
+//
+//    for (int[][] board3 : answerBoards) {
+//      int level = 4;
+//      boardRemover(board3, level);
+//      if (uniqueAnswerFinder(board3)) {
+//        for (int[] b : board3) {
+//          for (int v : b) {
+//            System.out.print(v + " ");
+//          }
+//          System.out.println();
+//        }
+//        System.out.println();
+//      }
+//    }
 
-    for (int[][] board3 : answerBoards) {
-      boardRemover(board3);
-      if (uniqueAnswerFinder(board3)) {
-        for (int[] b : board3) {
-          for (int v : b) {
-            System.out.print(v + " ");
-          }
-          System.out.println();
-        }
-        System.out.println();
-      }
-//      System.out.println(uniqueAnswerFinder(board3));
-    }
+
 
 //    while (true) {
 //      int[][] expert = createBoard3();
@@ -391,19 +375,6 @@ public class boardGeneratorTemp {
 //        break;
 //      }
 //    }
-
-
-//    for (int[][] board3 : answerBoards) {
-//      for (int[] b : board3) {
-//       for (int v : b) {
-//          System.out.print(v + " ");
-//       }
-//       System.out.println();
-//     }
-//      System.out.println();
-//    }
-
-
 
   }
 }

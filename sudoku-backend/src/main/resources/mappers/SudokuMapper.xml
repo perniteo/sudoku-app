@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="io.github.perniteo.sudoku.repository.SudokuMapper">
+
+  <insert id="insertSudoku">
+    INSERT INTO board
+      (level, start_board, answer_board, created_at)
+    VALUES (
+      #{difficulty},
+      #{startBoard}::jsonb,
+      #{answerBoard}::jsonb,
+      NOW()
+    )
+  </insert>
+
+</mapper>

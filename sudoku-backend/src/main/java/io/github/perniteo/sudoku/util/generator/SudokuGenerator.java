@@ -88,7 +88,7 @@ public class SudokuGenerator {
 
     SudokuBoard answerBoard = new SudokuBoard(createCells(answerValues, true));
     SudokuBoard puzzleBoard = new SudokuBoard(createCells(puzzleValues, false));
-    return new GeneratedSudoku(puzzleBoard, answerBoard);
+    return new GeneratedSudoku(puzzleBoard, answerBoard, 1, 1);
   }
 
   private Cell[][] createCells(int[][] values, boolean allFixed) {

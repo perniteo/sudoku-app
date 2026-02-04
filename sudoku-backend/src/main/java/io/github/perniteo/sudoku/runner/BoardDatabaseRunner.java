@@ -6,8 +6,9 @@ import io.github.perniteo.sudoku.util.generator.BoardGeneratorTemp;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.stereotype.Component;
 
-//@Component
+@Component
 @RequiredArgsConstructor
 public class BoardDatabaseRunner implements CommandLineRunner {
 
@@ -19,7 +20,7 @@ public class BoardDatabaseRunner implements CommandLineRunner {
 
     // 1. 모듈에서 데이터 가져오기 (new 가능!)
     BoardGeneratorTemp generator = new BoardGeneratorTemp();
-    List<SudokuBoardData> dataList = generator.generate(4, 100);
+    List<SudokuBoardData> dataList = generator.generate(6, 100);
 
     // 2. DB에 꽂기
     for (SudokuBoardData data : dataList) {

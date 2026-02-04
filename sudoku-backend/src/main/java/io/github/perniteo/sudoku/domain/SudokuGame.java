@@ -1,5 +1,7 @@
 package io.github.perniteo.sudoku.domain;
 
+import io.github.perniteo.sudoku.dto.SudokuBoardData;
+import io.github.perniteo.sudoku.dto.SudokuBoardRow;
 import io.github.perniteo.sudoku.util.generator.GeneratedSudoku;
 import java.time.LocalDateTime;
 
@@ -10,6 +12,7 @@ public class SudokuGame {
   private final SudokuBoard puzzleBoard;
   private final SudokuBoard answerBoard;
   private int life;
+  private int difficulty;
 
   public SudokuGame(GeneratedSudoku generated) {
     this.puzzleBoard = generated.getPuzzleBoard();
@@ -17,6 +20,15 @@ public class SudokuGame {
     this.startedAt = LocalDateTime.now();
     this.status = GameStatus.PLAYING;
     this.life = 3;
+  }
+
+  public SudokuGame(SudokuBoardData boardData) {
+    this.difficulty = boardData.getDifficulty();
+    this.puzzleBoard = SudokuBoard.from(boardData.getInitialBoard());
+    this.answerBoard = SudokuBoard.from(boardData.getSolutionBoard());
+    this.startedAt = LocalDateTime.now();
+    this.life = 3;
+    this.status = GameStatus.PLAYING;
   }
 
   public int getValue(int row, int col) {

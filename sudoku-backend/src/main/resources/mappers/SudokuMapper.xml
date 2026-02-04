@@ -16,4 +16,16 @@
     )
   </insert>
 
+  <select id="findRandomByDifficulty" resultType="io.github.perniteo.sudoku.dto.SudokuBoardRow">
+    SELECT
+      id            AS boardId,
+      level         AS difficulty,
+      start_board   AS startJson,
+      answer_board  AS answerJson
+    FROM board
+    WHERE level = #{difficulty}
+    ORDER BY RANDOM()
+    LIMIT 1
+  </select>
+
 </mapper>

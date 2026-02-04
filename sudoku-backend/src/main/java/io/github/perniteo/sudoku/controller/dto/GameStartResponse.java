@@ -1,5 +1,8 @@
 package io.github.perniteo.sudoku.controller.dto;
 
+import lombok.Getter;
+
+@Getter
 public class GameStartResponse {
 
   String gameId;
@@ -11,9 +14,5 @@ public class GameStartResponse {
     this.board = board;
     this.status = status;
   }
-
-  public String getGameId() {return gameId;}
-  public int[][] getBoard() {return board;}
-  public String getStatus() {return status;}
 
 }

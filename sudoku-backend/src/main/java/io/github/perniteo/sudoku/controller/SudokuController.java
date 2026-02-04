@@ -1,5 +1,7 @@
 package io.github.perniteo.sudoku.controller;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import io.github.perniteo.sudoku.controller.dto.GameStartRequest;
 import io.github.perniteo.sudoku.controller.dto.PlaceRequest;
 import io.github.perniteo.sudoku.controller.dto.PlaceResponse;
 import io.github.perniteo.sudoku.domain.PlaceResult;
@@ -23,8 +25,9 @@ public class SudokuController {
   }
 
   @PostMapping
-  public GameStartResponse startGame() {
-    Long gameId = service.createGame();
+  public GameStartResponse startGame(@RequestBody GameStartRequest request) throws JsonProcessingException {
+    int difficulty = request.getDifficulty();
+    Long gameId = service.createGame(difficulty);
     SudokuGame game = service.getGame(gameId);
 
     return new GameStartResponse(

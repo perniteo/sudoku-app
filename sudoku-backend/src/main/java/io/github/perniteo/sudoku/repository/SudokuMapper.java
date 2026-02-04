@@ -1,5 +1,7 @@
 package io.github.perniteo.sudoku.repository;
 
+import io.github.perniteo.sudoku.dto.SudokuBoardRow;
+import io.github.perniteo.sudoku.util.generator.GeneratedSudoku;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -9,4 +11,7 @@ public interface SudokuMapper {
       @Param("difficulty") int difficulty,
       @Param("startBoard") String startBoard, // Jackson이 변환한 String
       @Param("answerBoard") String answerBoard); // Jackson이 변환한 String
+
+  SudokuBoardRow findRandomByDifficulty(
+      @Param("difficulty") int level);
 }

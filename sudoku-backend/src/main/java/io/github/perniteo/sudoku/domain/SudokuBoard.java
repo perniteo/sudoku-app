@@ -106,5 +106,19 @@ public class SudokuBoard {
     }
   }
 
+  public static SudokuBoard from(int[][] board) {
+    Cell[][] cells = new Cell[9][9];
+
+    for (int r = 0; r < 9; r++) {
+      for (int c = 0; c < 9; c++) {
+        int value = board[r][c];
+        boolean fixed = value != 0;
+        cells[r][c] = new Cell(value, fixed);
+      }
+    }
+
+    return new SudokuBoard(cells);
+  }
+
 
 }

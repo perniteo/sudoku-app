@@ -3,7 +3,7 @@ package io.github.perniteo.sudoku.domain;
 public class Cell {
 
   private int value;
-  private final boolean fixed;
+  private boolean fixed;
 
   public Cell(int value, boolean fixed) {
     this.value = value;
@@ -23,6 +23,10 @@ public class Cell {
 
   public boolean isEmpty() {
     return value == 0;
+  }
+
+  public void fix() {
+    this.fixed = true;
   }
 
   public boolean isFixed() {

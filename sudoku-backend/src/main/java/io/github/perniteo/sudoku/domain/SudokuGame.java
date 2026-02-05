@@ -53,7 +53,7 @@ public class SudokuGame {
     if (puzzleBoard.isFixed(row, col)) return PlaceResult.ALREADY_FIXED;
 
     if (value == 0) {
-      puzzleBoard.place(row, col, 0);
+      puzzleBoard.erase(row, col);
       return PlaceResult.ERASE;
     }
 

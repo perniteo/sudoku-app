@@ -25,6 +25,12 @@ public class SudokuBoard {
     validatePlacement(row, col, value);
 
     cells[row][col].setValue(value);
+    cells[row][col].fix();
+  }
+
+  public void erase(int row, int col) {
+    validatePosition(row, col);
+    cells[row][col].setValue(0);
   }
 
   private void validatePlacement(int row, int col, int value) {

@@ -31,6 +31,20 @@ dependencies {
 
     // PostgreSQL Driver
     runtimeOnly 'org.postgresql:postgresql'
+
+    // JPA (회원가입/로그인용)
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+
+    // Spring Security 핵심 의존성 (BCryptPasswordEncoder 사용을 위해 필수)
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+
+    // 회원가입 시 @Email, @NotBlank 같은 유효성 검증 기능을 쓰려면 추가하세요.
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+    // JWT
+    implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.11.5'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.11.5'
 }
 
 test {

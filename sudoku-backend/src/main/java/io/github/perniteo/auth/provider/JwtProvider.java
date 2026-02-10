@@ -32,4 +32,22 @@ public class JwtProvider {
         .signWith(key, SignatureAlgorithm.HS256)
         .compact();
   }
+
+  // 토큰에서 email(Subject) 추출
+  public String getEmail(String token) {
+    return Jwts.parserBuilder().setSigningKey(key).build()
+        .parseClaimsJws(token).getBody().getSubject();
+  }
+
+  // 토큰 유효성 검증
+  public boolean validateToken(String token) {
+    try {
+      Jwts.parserBuilder().setSigningKey(key).build().parseClaimsJws(token);
+      return true;
+    } catch (Exception e) {
+      return false;
+    }
+  }
+
+
 }

@@ -14,6 +14,11 @@ public class BoardLoadService {
   private final SudokuMapper sudokuMapper;
   private final ObjectMapper objectMapper;
 
+  public SudokuBoardRow loadRawBoard(int difficulty) throws JsonProcessingException {
+    return sudokuMapper.findRandomByDifficulty(difficulty);
+  }
+
+
   public SudokuBoardData loadBoard(int difficulty) throws JsonProcessingException {
     SudokuBoardRow row = sudokuMapper.findRandomByDifficulty(difficulty);
 

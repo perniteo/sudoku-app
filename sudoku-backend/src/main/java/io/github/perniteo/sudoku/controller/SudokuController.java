@@ -27,11 +27,11 @@ public class SudokuController {
   @PostMapping
   public GameStartResponse startGame(@RequestBody GameStartRequest request) throws JsonProcessingException {
     int difficulty = request.getDifficulty();
-    Long gameId = service.createGame(difficulty);
+    String gameId = service.createGame(difficulty);
     SudokuGame game = service.getGame(gameId);
 
     return new GameStartResponse(
-        gameId.toString(),
+        gameId,
         extractBoard(game),
         game.getStatus().name()
     );
@@ -50,7 +50,7 @@ public class SudokuController {
 
   @PostMapping("/{id}/place")
   public PlaceResponse placeNumber(
-      @PathVariable Long id,
+      @PathVariable String id,
       @RequestBody PlaceRequest request
   ) {
     PlaceResult result =

@@ -13,6 +13,8 @@ public class SudokuGame {
   private final SudokuBoard answerBoard;
   private int life;
   private int difficulty;
+//  private final String puzzleJson;
+//  private final String answerJson;
 
   public SudokuGame(GeneratedSudoku generated) {
     this.puzzleBoard = generated.getPuzzleBoard();
@@ -21,6 +23,14 @@ public class SudokuGame {
     this.status = GameStatus.PLAYING;
     this.life = 3;
   }
+//  public SudokuGame(SudokuBoardRow boardRow) {
+//    this.difficulty = boardRow.getDifficulty();
+//    this.puzzleJson = boardRow.getStartJson();
+//    this.answerJson = boardRow.getAnswerJson();
+//    this.startedAt = LocalDateTime.now();
+//    this.life = 3;
+//    this.status = GameStatus.PLAYING;
+//  }
 
   public SudokuGame(SudokuBoardData boardData) {
     this.difficulty = boardData.getDifficulty();

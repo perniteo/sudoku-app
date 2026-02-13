@@ -29,6 +29,8 @@ public class AuthController {
   @PostMapping("/sign-in")
   public ResponseEntity<String> signIn(@RequestBody SignInRequest dto) {
     String token = authService.signIn(dto);
+    System.out.println("로그인 시도 이메일: " + dto.getEmail());
+    System.out.println("로그인 시도 비번: " + dto.getPassword());
     return ResponseEntity.ok(token); // 바디에 토큰 담아서 보냄
   }
 

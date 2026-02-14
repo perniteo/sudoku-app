@@ -23,6 +23,7 @@ public class SudokuGameService {
   private final GameRepository gameRepository;
 
   public String createGame(int difficulty) throws JsonProcessingException {
+
     SudokuBoardData boardData = boardLoadService.loadBoard(difficulty);
     SudokuGame game = new SudokuGame(boardData);
     long id = idGenerator.incrementAndGet();
@@ -31,18 +32,42 @@ public class SudokuGameService {
     return String.valueOf(id);
   }
 
-  public PlaceResult placeNumber(String gameId, int row, int col, int value) {
-    SudokuGame game = gameRepository.findById(gameId)
-        .orElseThrow(() -> new IllegalArgumentException("게임 없음"));
+  public String createGame(String userId, int difficulty) throws JsonProcessingException {
+    // 1. 기존 게임 삭제 (1인 1게임 보장)
+    gameRepository.delete(userId);
+
+    // 2. 새 게임 생성 및 저장
+    SudokuBoardData boardData = boardLoadService.loadBoard(difficulty);
+    SudokuGame game = new SudokuGame(boardData);
+    gameRepository.save(userId, game);
+
+    return userId;
+  }
+
+  public PlaceResult placeNumber(String userId, int row, int col, int value) {
+    // 1. Redis에서 데이터 Fetch 및 Domain 복구
+    SudokuGame game = getGame(userId);
+
+    // 2. Pure Java 도메인 로직 수행 (메모리 내 상태 변경)
     PlaceResult result = game.placeNumber(row, col, value);
-    gameRepository.save(gameId, game); // Redis 대비
+
+    // 3. 결과에 따른 후처리
+    if (result == PlaceResult.GAME_OVER || result == PlaceResult.COMPLETED) {
+      // 게임이 종료된 경우 Redis에서 삭제 (필요시 DB 기록 로직 추가)
+      gameRepository.delete(userId);
+    } else {
+      // 진행 중인 경우 변경된 상태(Cell, Memo, Life 등)를 Redis에 덮어쓰기
+      gameRepository.save(userId, game);
+    }
     return result;
   }
+
 
   public SudokuGame getGame(String gameId) {
     return gameRepository.findById(gameId)
         .orElseThrow(() -> new IllegalArgumentException("게임 없음"));
   }
+
 
 
 }

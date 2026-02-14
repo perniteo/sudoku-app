@@ -14,3 +14,10 @@
   - 현재 back server memory (Map object)로 관리
   - Redis 캐싱(in-memory db): 퍼즐 생성 부하 감소 예상 고려중
 - 동시성 처리: 여러 게임 격리
+
+## Redis
+
+- [x] server In-memory -> redis(aof)
+- [x] 이어하기 (user-id) 기반 ttl 포함한 redis 저장
+- [ ] 비회원(uuid) 세션 저장
+- [ ] jwt refresh token 발급 후 저장

@@ -1,18 +1,15 @@
 package io.github.perniteo.sudoku.controller.dto;
 
+import io.github.perniteo.sudoku.domain.dto.CellRedisDto;
+import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 @Getter
+@AllArgsConstructor
 public class GameStartResponse {
 
   String gameId;
-  int[][] board;
+  CellRedisDto[][] board;
   String status;
-
-  public GameStartResponse(String gameId, int[][] board, String status) {
-    this.gameId = gameId;
-    this.board = board;
-    this.status = status;
-  }
 
 }

@@ -1,13 +1,15 @@
 package io.github.perniteo.sudoku.controller.dto;
 
+import io.github.perniteo.sudoku.domain.dto.CellRedisDto;
+
 public class PlaceResponse {
 
   private final String result;
-  private final int[][] board;
+  private final CellRedisDto[][] board;
   private final int life;
   private final String status;
 
-  public PlaceResponse(String result, int[][] board, int life, String status) {
+  public PlaceResponse(String result, CellRedisDto[][] board, int life, String status) {
     this.result = result;
     this.board = board;
     this.life = life;
@@ -18,7 +20,7 @@ public class PlaceResponse {
     return result;
   }
 
-  public int[][] getBoard() {
+  public CellRedisDto[][] getBoard() {
     return board;
   }
 

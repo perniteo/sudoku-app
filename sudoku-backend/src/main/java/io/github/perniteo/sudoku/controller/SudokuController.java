@@ -1,15 +1,14 @@
 package io.github.perniteo.sudoku.controller;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import io.github.perniteo.sudoku.controller.dto.GameContinueResponse;
 import io.github.perniteo.sudoku.controller.dto.GameStartRequest;
+import io.github.perniteo.sudoku.controller.dto.GameStartResponse;
 import io.github.perniteo.sudoku.controller.dto.PlaceRequest;
 import io.github.perniteo.sudoku.controller.dto.PlaceResponse;
 import io.github.perniteo.sudoku.domain.PlaceResult;
 import io.github.perniteo.sudoku.domain.SudokuGame;
-import io.github.perniteo.sudoku.controller.dto.GameStartResponse;
 import io.github.perniteo.sudoku.service.SudokuGameService;
-import java.nio.file.attribute.UserPrincipal;
-import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -17,7 +16,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -56,14 +54,14 @@ public class SudokuController {
 
     return new GameStartResponse(
         finalId,
-        game.getPuzzleBoard().getMatrix(),
+        game.getPuzzleBoard().getCellSnapshots(),
         game.getStatus().name()
     );
   }
 
   // [이어하기 & 상태 조회]
-  @GetMapping({"/{id}", ""}) // ID가 경로에 있거나 JWT 이메일로 조회
-  public ResponseEntity<GameStartResponse> getRecentGame(
+  @GetMapping({"/{id:.+}", ""}) // ID가 경로에 있거나 JWT 이메일로 조회
+  public ResponseEntity<GameContinueResponse> getRecentGame(
       @AuthenticationPrincipal String email,
       @PathVariable(required = false) String id
   ) {
@@ -71,10 +69,13 @@ public class SudokuController {
 
     try {
       SudokuGame game = service.getGame(finalId);
-      return ResponseEntity.ok(new GameStartResponse(
+      return ResponseEntity.ok(new GameContinueResponse(
           finalId,
-          game.getPuzzleBoard().getMatrix(),
-          game.getStatus().name()
+          game.getPuzzleBoard().getCellSnapshots(),
+          game.getStatus().name(),
+          game.getDifficulty(),
+          game.getLife(),
+          game.getAccumulatedSeconds()
       ));
     } catch (IllegalArgumentException e) {
       return ResponseEntity.notFound().build(); // 게임 없으면 404
@@ -102,18 +103,38 @@ public class SudokuController {
             id,
             request.getRow(),
             request.getCol(),
-            request.getValue()
+            request.getValue(),
+            request.getElapsedTime()
         );
 
     SudokuGame game = service.getGame(id);
 
     return new PlaceResponse(
         result.name(),
-        game.getPuzzleBoard().getMatrix(),
+        game.getPuzzleBoard().getCellSnapshots(),
         game.getLife(),
         game.getStatus().name()
     );
   }
 
+  @PostMapping("/{id}/memo")
+  public ResponseEntity<PlaceResponse> toggleMemo(
+      @PathVariable String id,
+      @RequestBody PlaceRequest request // row, col, value 재사용
+  ) {
+    // 1. 메모 수정 수행
+    service.toggleMemo(id, request.getRow(), request.getCol(), request.getValue());
+
+    // 2. 수정된 최신 게임 정보 가져오기
+    SudokuGame game = service.getGame(id);
+
+    // 3. 전체 보드(CellRedisDto[][])와 함께 응답 반환
+    return ResponseEntity.ok(new PlaceResponse(
+        "MEMO_TOGGLED",
+        game.getPuzzleBoard().getCellSnapshots(), // 👈 이게 있어야 리액트가 그림
+        game.getLife(),
+        game.getStatus().name()
+    ));
+  }
 
 }

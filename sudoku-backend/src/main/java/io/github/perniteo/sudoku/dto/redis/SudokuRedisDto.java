@@ -9,8 +9,8 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 @Getter
-@NoArgsConstructor(access = AccessLevel.PROTECTED) // Jackson이 빈 객체 만들 때 씀
-@AllArgsConstructor(access = AccessLevel.PRIVATE)
+@NoArgsConstructor(access = AccessLevel.PUBLIC) // Jackson이 빈 객체 만들 때 씀
+@AllArgsConstructor(access = AccessLevel.PUBLIC)
 @Builder
 public class SudokuRedisDto {
 
@@ -20,6 +20,7 @@ public class SudokuRedisDto {
   private int[][] answerBoard;
   private int life;
   private int difficulty;
+  private long elapsedTime; // 실제 플레이한 초(seconds)를 저장할 필드
 
 //  // 도메인(SudokuGame) -> Redis DTO 변환
 //  public static SudokuRedisDto from(SudokuGame game) {

@@ -20,6 +20,12 @@ public class SudokuBoard {
     return cells[row][col].isFixed();
   }
 
+  public void toggleMemo(int row, int col, int value) {
+    // 보드 내부의 Cell[row][col] 객체를 가져와서 메모 Set을 수정
+    Cell cell = cells[row][col];
+    cell.toggleMemo(value);
+  }
+
 
   public void place(int row, int col, int value) {
     validatePosition(row, col);

@@ -97,17 +97,22 @@ function App() {
       const data = await res.json();
       console.log("Continued Game Data:", data);
 
+      // 서버가 준 data.board (CellRedisDto[][]) 가공
+      const serverBoard = data.board;
+      const newBoard = serverBoard.map((row) => row.map((cell) => cell.v));
+      const newNotes = serverBoard.map((row) =>
+        row.map((cell) => Array.from(cell.m || [])),
+      );
+
       // 3. 서버 데이터를 리액트 상태(game)로 주입
       setGame({
         ...data,
         id: data.gameId || data.id, // 백엔드 필드명 확인
-        board: data.board,
-        life: data.life,
+        board: newBoard,
+        life: data.life || 3, // life가 없으면 기본 3
         difficulty: data.difficulty,
         // 메모 데이터 초기화 방어 (서버에 없으면 9x9 빈 배열)
-        notes:
-          data.notes ||
-          Array.from({ length: 9 }, () => Array.from({ length: 9 }, () => [])),
+        notes: newNotes,
       });
 
       // 4. UI 상태 동기화 (먹통 방지 핵심)
@@ -158,6 +163,28 @@ function App() {
       setViewMode("menu");
     }
   };
+  // 메모 저장 함수 (게임 상태가 바뀔 때마다 호출, placeNumber에서도 호출)
+  const saveNoteToServer = useCallback(
+    async (row, col, value) => {
+      if (!game) return;
+      const token = localStorage.getItem("token");
+
+      try {
+        // 백엔드에 메모 업데이트 API가 있다고 가정 (없다면 컨트롤러에 추가 필요)
+        await fetch(`http://localhost:8080/games/${game.gameId}/memo`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token && { Authorization: `Bearer ${token}` }),
+          },
+          body: JSON.stringify({ row, col, value }),
+        });
+      } catch (error) {
+        console.error("메모 저장 실패:", error);
+      }
+    },
+    [game],
+  );
 
   // 이어하기 데이터가 있는지 서버에 확인
 
@@ -169,9 +196,10 @@ function App() {
       setHasSavedGame(false);
       return;
     }
+    const baseUrl = "http://localhost:8080";
 
     // 2. URL 결정: 토큰 있으면 /games (백엔드가 JWT 우선), 없으면 /games/anon:uuid
-    const url = token ? "/games" : `/games/${savedId}`;
+    const url = token ? `${baseUrl}/games` : `${baseUrl}/games/${savedId}`;
 
     try {
       const headers = { "Content-Type": "application/json" };
@@ -200,30 +228,48 @@ function App() {
     if (token || savedId) {
       checkRecentGame(token); // useCallback으로 선언된 함수 호출
     }
-  }, [token, checkRecentGame]);
+  }, [token, checkRecentGame, game]); // 게임 상태가 바뀔 때마다 이어하기 가능 여부 재검사 (예: 게임 완료 시 hasSavedGame 업데이트)
 
   // 1. 메모 토글 함수 (깊은 복사 적용)
-  const toggleNote = useCallback((row, col, value) => {
-    if (value === 0) return;
+  const toggleNote = useCallback(
+    async (row, col, value) => {
+      if (!game || value === 0) return;
 
-    setGame((prev) => {
-      if (!prev || !prev.notes) return prev;
+      // 1. (선택사항) 낙관적 업데이트: 서버 응답 전 UI를 먼저 바꿈 (속도감 up)
+      // 기존 toggleNote 로직을 여기에 넣어도 되지만, 일단 서버 응답 동기화를 우선합니다.
 
-      // 2차원 배열 깊은 복사 (map 사용)
-      const newNotes = prev.notes.map((r, rIdx) =>
-        r.map((c, cIdx) => {
-          if (rIdx === row && cIdx === col) {
-            return c.includes(value)
-              ? c.filter((v) => v !== value)
-              : [...c, value].sort((a, b) => a - b);
-          }
-          return c;
-        }),
-      );
+      const token = localStorage.getItem("token");
+      try {
+        const res = await fetch(
+          `http://localhost:8080/games/${game.gameId}/memo`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(token && { Authorization: `Bearer ${token}` }),
+            },
+            body: JSON.stringify({ row, col, value }),
+          },
+        );
 
-      return { ...prev, notes: newNotes };
-    });
-  }, []);
+        if (res.ok) {
+          const data = await res.json();
+          // 백엔드에서 준 CellRedisDto[][] (board 필드) 가공
+          const serverBoard = data.board;
+
+          setGame((prev) => ({
+            ...prev,
+            // 서버의 최신 숫자판(v)과 메모판(m)을 상태에 반영
+            board: serverBoard.map((r) => r.map((c) => c.v)),
+            notes: serverBoard.map((r) => r.map((c) => Array.from(c.m || []))),
+          }));
+        }
+      } catch (error) {
+        console.error("메모 저장 실패:", error);
+      }
+    },
+    [game],
+  ); // token은 localStorage에서 직접 가져오므로 game만 의존성 추가
 
   const toggleNoteMode = useCallback(() => {
     setIsNoteMode((prev) => !prev);
@@ -233,12 +279,10 @@ function App() {
   const placeNumber = useCallback(
     async (row, col, value) => {
       if (!game || isPlacing) return;
-
       const token = localStorage.getItem("token");
-
-      if (!game) return;
       setIsPlacing(true);
       setStatusMessage("숫자 입력 중...");
+
       try {
         const res = await fetch(`/games/${game.gameId}/place`, {
           method: "POST",
@@ -246,18 +290,21 @@ function App() {
             "Content-Type": "application/json",
             ...(token && { Authorization: `Bearer ${token}` }),
           },
-          body: JSON.stringify({
-            row,
-            col,
-            value,
-            elapsedTime: seconds,
-            notes: game.notes,
-          }),
+          body: JSON.stringify({ row, col, value, elapsedTime: seconds }),
         });
         const data = await res.json();
+
+        // 서버가 준 CellRedisDto[][] 가공 (v: 값, m: 메모)
+        const serverBoard = data.board;
+        const newBoard = serverBoard.map((r) => r.map((c) => c.v));
+        const newNotes = serverBoard.map((r) =>
+          r.map((c) => Array.from(c.m || [])),
+        );
+
         setGame((prev) => ({
           ...prev,
-          board: data.board,
+          board: newBoard,
+          notes: newNotes, // 메모 동기화 핵심
           status: data.status,
           life: data.life,
         }));
@@ -270,7 +317,6 @@ function App() {
     },
     [game, seconds, isPlacing],
   );
-
   useEffect(() => {
     const handleKeyDown = (e) => {
       // 1. 방어 코드: 이벤트 객체나 key가 없으면 즉시 종료
@@ -364,34 +410,33 @@ function App() {
 
     // 2. URL 결정 (기존 ID가 있으면 경로에 추가)
     const url = savedId ? `/games/start/${savedId}` : "/games/start";
-
     try {
-      const headers = { "Content-Type": "application/json" };
-
-      // 3. 로그인 상태라면 JWT 헤더 추가 ⭐ (이게 없어서 로그인이 안 풀린 것)
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
-      }
-
       const res = await fetch(url, {
-        method: "POST",
-        headers: headers,
+        method: "POST", // 👈 반드시 POST여야 405 에러가 안 납니다!
+        headers: {
+          "Content-Type": "application/json",
+          ...(token && { Authorization: `Bearer ${token}` }),
+        },
         body: JSON.stringify({ difficulty }),
       });
-
       const data = await res.json();
 
-      // 4. 서버가 준 gameId(user:email 또는 anon:uuid)를 로컬에 저장
       localStorage.setItem("sudoku_game_id", data.gameId);
+
+      const serverBoard = data.board;
+      const newBoard = serverBoard.map((r) => r.map((c) => c.v));
+      // 시작 시점에는 m이 비어있겠지만, 구조를 일관되게 가져갑니다.
+      const newNotes = serverBoard.map((r) =>
+        r.map((c) => Array.from(c.m || [])),
+      );
 
       setSeconds(0);
       setGame({
         ...data,
-        id: data.gameId, // 백엔드 식별자와 맞춤
+        id: data.gameId,
+        board: newBoard,
+        notes: newNotes,
         life: data.life ?? 3,
-        notes: Array.from({ length: 9 }, () =>
-          Array.from({ length: 9 }, () => []),
-        ),
         difficulty,
       });
 
@@ -422,7 +467,7 @@ function App() {
           onStart={startGame}
           onContinue={continueGame}
           hasSavedGame={hasSavedGame}
-          token={localStorage.getItem("token")}
+          token={token}
         />
       ) : (
         <>

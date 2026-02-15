@@ -14,6 +14,7 @@ public class SudokuGame {
   private final SudokuBoard answerBoard;
   private int life;
   private int difficulty;
+  private long accumulatedSeconds; // 👈 추가: 누적 플레이 시간(초)
 //  private final String puzzleJson;
 //  private final String answerJson;
 
@@ -44,13 +45,14 @@ public class SudokuGame {
 
   // [추가] Redis DTO로부터 도메인 객체 복구 (Private 생성자 활용)
   private SudokuGame(LocalDateTime startedAt, GameStatus status, SudokuBoard puzzleBoard,
-      SudokuBoard answerBoard, int life, int difficulty) {
+      SudokuBoard answerBoard, int life, int difficulty, long accumulatedSeconds) {
     this.startedAt = startedAt;
     this.status = status;
     this.puzzleBoard = puzzleBoard;
     this.answerBoard = answerBoard;
     this.life = life;
     this.difficulty = difficulty;
+    this.accumulatedSeconds = accumulatedSeconds;
   }
 
   // [추가] Redis -> Domain 브릿지 메서드
@@ -61,7 +63,8 @@ public class SudokuGame {
         SudokuBoard.fromSnapshots(dto.getPuzzleBoard()), // 메모/고정 상태 포함 복구
         SudokuBoard.from(dto.getAnswerBoard()),          // 정답지는 단순 숫자 복구
         dto.getLife(),
-        dto.getDifficulty()
+        dto.getDifficulty(),
+        dto.getElapsedTime()
     );
   }
 
@@ -74,8 +77,15 @@ public class SudokuGame {
         .answerBoard(this.answerBoard.getMatrix())
         .life(this.life)
         .difficulty(this.difficulty)
+        .elapsedTime(this.accumulatedSeconds)
         .build();
   }
+
+  public void updateTime(long time) {
+    this.accumulatedSeconds = time;
+  }
+
+  public long getAccumulatedSeconds() { return accumulatedSeconds; }
 
   public int getValue(int row, int col) {
     return puzzleBoard.getValue(row, col);
@@ -94,6 +104,8 @@ public class SudokuGame {
   }
 
   public SudokuBoard getPuzzleBoard() { return puzzleBoard; }
+
+  public int getDifficulty() {return this.difficulty;}
 
   public PlaceResult placeNumber(int row, int col, int value) {
     if (status != GameStatus.PLAYING) return PlaceResult.GAME_OVER;
@@ -122,5 +134,16 @@ public class SudokuGame {
     }
 
     return PlaceResult.CORRECT;
+  }
+
+  public void toggleMemo(int row, int col, int value) {
+    // 1. 게임 진행 중일 때만 허용
+    if (this.status != GameStatus.PLAYING) return;
+
+    // 2. 이미 숫자가 채워진 칸(Fixed 포함)은 메모 불가
+    if (this.puzzleBoard.getValue(row, col) != 0) return;
+
+    // 3. 보드 객체에 메모 토글 위임
+    this.puzzleBoard.toggleMemo(row, col, value);
   }
 }

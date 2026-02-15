@@ -8,7 +8,7 @@ const MainMenu = ({
   hasSavedGame,
   token,
 }) => {
-  const canContinue = token && hasSavedGame;
+  const canContinue = hasSavedGame;
   return (
     <div
       style={{ border: "1px solid #eee", padding: "20px", borderRadius: "8px" }}

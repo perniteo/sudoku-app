@@ -1,5 +1,6 @@
 package io.github.perniteo.sudoku.domain;
 
+import java.util.HashSet;
 import java.util.Set;
 import lombok.Getter;
 
@@ -18,7 +19,8 @@ public class Cell {
   public Cell(int value, boolean fixed, Set<Integer> memo) {
     this.value = value;
     this.fixed = fixed;
-    this.memo = memo;
+    // 서버에서 불러올 때 memo가 null이면 빈 HashSet으로 초기화
+    this.memo = (memo == null) ? new HashSet<>() : memo;
   }
 
   public void setValue(int value) {
@@ -28,7 +30,11 @@ public class Cell {
     this.value = value;
   }
 
-  public void setMemo(int value) {
+  public void toggleMemo(int value) {
+    // 혹시 모를 null 체크 (방어 코드)
+    if (this.memo == null) {
+      this.memo = new HashSet<>();
+    }
     if (fixed) {
       throw new IllegalArgumentException("fixed cell");
     }

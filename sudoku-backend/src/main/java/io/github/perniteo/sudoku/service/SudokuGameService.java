@@ -7,6 +7,7 @@ import io.github.perniteo.sudoku.dto.SudokuBoardData;
 import io.github.perniteo.sudoku.repository.GameRepository;
 import io.github.perniteo.sudoku.util.generator.GeneratedSudoku;
 import io.github.perniteo.sudoku.util.generator.SudokuGenerator;
+import jakarta.transaction.Transactional;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -44,12 +45,14 @@ public class SudokuGameService {
     return userId;
   }
 
-  public PlaceResult placeNumber(String userId, int row, int col, int value) {
+  public PlaceResult placeNumber(String userId, int row, int col, int value, long elapsedTime) {
     // 1. Redis에서 데이터 Fetch 및 Domain 복구
     SudokuGame game = getGame(userId);
 
     // 2. Pure Java 도메인 로직 수행 (메모리 내 상태 변경)
     PlaceResult result = game.placeNumber(row, col, value);
+
+    game.updateTime(elapsedTime);
 
     // 3. 결과에 따른 후처리
     if (result == PlaceResult.GAME_OVER || result == PlaceResult.COMPLETED) {
@@ -68,6 +71,18 @@ public class SudokuGameService {
         .orElseThrow(() -> new IllegalArgumentException("게임 없음"));
   }
 
+  @Transactional
+  public void toggleMemo(String userId, int row, int col, int value) {
+    // 1. Redis에서 도메인 복구
+    SudokuGame game = getGame(userId);
+
+    // 2. 도메인 로직 수행 (메모 업데이트)
+    // 앞서 SudokuGame에 추가한 toggleMemo 호출
+    game.toggleMemo(row, col, value);
+
+    // 3. 변경된 상태(CellSnapshots 내의 Set<Integer> m)를 Redis에 다시 저장
+    gameRepository.save(userId, game);
+  }
 
 
 }

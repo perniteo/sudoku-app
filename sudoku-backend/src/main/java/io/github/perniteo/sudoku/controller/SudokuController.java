@@ -2,6 +2,7 @@ package io.github.perniteo.sudoku.controller;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import io.github.perniteo.sudoku.controller.dto.GameContinueResponse;
+import io.github.perniteo.sudoku.controller.dto.GameSaveRequest;
 import io.github.perniteo.sudoku.controller.dto.GameStartRequest;
 import io.github.perniteo.sudoku.controller.dto.GameStartResponse;
 import io.github.perniteo.sudoku.controller.dto.PlaceRequest;
@@ -9,7 +10,9 @@ import io.github.perniteo.sudoku.controller.dto.PlaceResponse;
 import io.github.perniteo.sudoku.domain.PlaceResult;
 import io.github.perniteo.sudoku.domain.SudokuGame;
 import io.github.perniteo.sudoku.service.SudokuGameService;
+import java.util.ArrayList;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -59,18 +62,52 @@ public class SudokuController {
     );
   }
 
-  // [이어하기 & 상태 조회]
-  @GetMapping({"/{id:.+}", ""}) // ID가 경로에 있거나 JWT 이메일로 조회
-  public ResponseEntity<GameContinueResponse> getRecentGame(
-      @AuthenticationPrincipal String email,
-      @PathVariable(required = false) String id
+//  // [이어하기 & 상태 조회]
+//  @GetMapping({"/{id:.+}", ""}) // ID가 경로에 있거나 JWT 이메일로 조회
+//  public ResponseEntity<GameContinueResponse> getRecentGame(
+//      @AuthenticationPrincipal String email,
+//      @PathVariable(required = false) String id
+//  ) {
+//    String finalId = (email != null) ? "user:" + email : id;
+//
+//    try {
+//      SudokuGame game = service.getGame(finalId);
+//      return ResponseEntity.ok(new GameContinueResponse(
+//          finalId,
+//          game.getPuzzleBoard().getCellSnapshots(),
+//          game.getStatus().name(),
+//          game.getDifficulty(),
+//          game.getLife(),
+//          game.getAccumulatedSeconds()
+//      ));
+//    } catch (IllegalArgumentException e) {
+//      return ResponseEntity.notFound().build(); // 게임 없으면 404
+//    }
+//  }
+  // 1. 로그인 사용자 (JWT 기반) - URL: /games
+  @GetMapping(value = {"", "/"})
+  public ResponseEntity<GameContinueResponse> getRecentGameByToken(
+      @AuthenticationPrincipal String email
   ) {
-    String finalId = (email != null) ? "user:" + email : id;
+    // anonymousUser 문자열 방어 로직
+    if (email == null || "anonymousUser".equals(email)) {
+      return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+    }
+    return fetchGame("user:" + email);
+  }
 
+  // 2. 익명 사용자 (ID 기반) - URL: /games/anon:uuid
+  @GetMapping("/{id}") //
+  public ResponseEntity<GameContinueResponse> getRecentGameById(@PathVariable String id) {
+    return fetchGame(id);
+  }
+
+  // 3. 공통 조회 메서드
+  private ResponseEntity<GameContinueResponse> fetchGame(String gameId) {
     try {
-      SudokuGame game = service.getGame(finalId);
+      SudokuGame game = service.getGame(gameId);
       return ResponseEntity.ok(new GameContinueResponse(
-          finalId,
+          gameId,
           game.getPuzzleBoard().getCellSnapshots(),
           game.getStatus().name(),
           game.getDifficulty(),
@@ -78,7 +115,7 @@ public class SudokuController {
           game.getAccumulatedSeconds()
       ));
     } catch (IllegalArgumentException e) {
-      return ResponseEntity.notFound().build(); // 게임 없으면 404
+      return ResponseEntity.notFound().build(); // 여기서 404가 나감
     }
   }
 
@@ -135,6 +172,33 @@ public class SudokuController {
         game.getLife(),
         game.getStatus().name()
     ));
+  }
+
+  // 1. 로그인 사용자용 (토큰 기반)
+  @PostMapping("/save")
+  public ResponseEntity<Void> saveGameByToken(
+      @AuthenticationPrincipal String email,
+      @RequestBody GameSaveRequest request
+  ) {
+    String finalId = "user:" + email;
+    return processSave(finalId, request.getElapsedTime());
+  }
+
+  // 2. 익명 사용자용 (ID 기반)
+  @PostMapping("/{id}/save")
+  public ResponseEntity<Void> saveGameById(
+      @PathVariable String id,
+      @RequestBody GameSaveRequest request
+  ) {
+    return processSave(id, request.getElapsedTime());
+  }
+
+  // 공통 로직 추출
+  private ResponseEntity<Void> processSave(String gameId, long elapsedTime) {
+    SudokuGame game = service.getGame(gameId);
+    game.updateTime(elapsedTime);
+    service.saveGame(gameId, game);
+    return ResponseEntity.ok().build();
   }
 
 }

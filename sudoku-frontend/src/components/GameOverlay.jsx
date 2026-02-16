@@ -10,6 +10,7 @@ const GameOverlay = ({
   seconds,
   startGame,
   togglePause,
+  saveAndExit,
 }) => {
   // 1. 일시정지 오버레이 (완전 차단 + 세련된 다크그레이)
   if (viewMode === "pause") {
@@ -24,6 +25,7 @@ const GameOverlay = ({
             <button
               onClick={() => {
                 setGame(null);
+                saveAndExit(); // Call the saveAndExit function
                 setViewMode("menu");
               }}
               style={styles.secondaryBtn}

@@ -23,6 +23,13 @@ public class SudokuGameService {
   private final BoardLoadService boardLoadService;
   private final GameRepository gameRepository;
 
+  @Transactional
+  public void saveGame(String userId, SudokuGame game) {
+    // 1. 이미 컨트롤러나 서비스에서 game.updateTime(elapsedTime)이 호출된 상태여야 함
+    // 2. 도메인 객체를 Redis DTO로 변환하여 저장
+    gameRepository.save(userId, game);
+  }
+
   public String createGame(int difficulty) throws JsonProcessingException {
 
     SudokuBoardData boardData = boardLoadService.loadBoard(difficulty);

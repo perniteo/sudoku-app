@@ -46,4 +46,10 @@ public class RedisGameRepository implements GameRepository {
     redisTemplate.delete(KEY_PREFIX + userId);
   }
 
+  public void saveWithTTL(String id, SudokuGame game, long seconds) {
+    SudokuRedisDto dto = game.toRedisDto();
+    // 🎯 Redis에 데이터를 넣으면서 동시에 만료 시간(TTL) 설정
+    redisTemplate.opsForValue().set("sudoku:" + id, dto, Duration.ofSeconds(seconds));
+  }
+
 }

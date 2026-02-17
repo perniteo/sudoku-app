@@ -26,4 +26,5 @@ public class InMemoryGameRepository implements GameRepository {
   public void delete(String gameId) {
     games.remove(gameId);
   }
+
 }

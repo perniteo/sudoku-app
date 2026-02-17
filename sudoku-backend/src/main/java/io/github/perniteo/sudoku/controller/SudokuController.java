@@ -135,22 +135,13 @@ public class SudokuController {
       @PathVariable String id,
       @RequestBody PlaceRequest request
   ) {
-    PlaceResult result =
-        service.placeNumber(
-            id,
-            request.getRow(),
-            request.getCol(),
-            request.getValue(),
-            request.getElapsedTime()
-        );
-
-    SudokuGame game = service.getGame(id);
-
-    return new PlaceResponse(
-        result.name(),
-        game.getPuzzleBoard().getCellSnapshots(),
-        game.getLife(),
-        game.getStatus().name()
+    // 서비스에게 모든 책임을 위임합니다.
+    return service.placeNumber(
+        id,
+        request.getRow(),
+        request.getCol(),
+        request.getValue(),
+        request.getElapsedTime()
     );
   }
 
@@ -174,31 +165,35 @@ public class SudokuController {
     ));
   }
 
-  // 1. 로그인 사용자용 (토큰 기반)
   @PostMapping("/save")
-  public ResponseEntity<Void> saveGameByToken(
+  public ResponseEntity<GameContinueResponse> saveGameByToken(
       @AuthenticationPrincipal String email,
       @RequestBody GameSaveRequest request
   ) {
-    String finalId = "user:" + email;
-    return processSave(finalId, request.getElapsedTime());
+    return processSave("user:" + email, request.getElapsedTime());
   }
 
-  // 2. 익명 사용자용 (ID 기반)
   @PostMapping("/{id}/save")
-  public ResponseEntity<Void> saveGameById(
+  public ResponseEntity<GameContinueResponse> saveGameById(
       @PathVariable String id,
       @RequestBody GameSaveRequest request
   ) {
     return processSave(id, request.getElapsedTime());
   }
 
-  // 공통 로직 추출
-  private ResponseEntity<Void> processSave(String gameId, long elapsedTime) {
-    SudokuGame game = service.getGame(gameId);
-    game.updateTime(elapsedTime);
-    service.saveGame(gameId, game);
-    return ResponseEntity.ok().build();
+  private ResponseEntity<GameContinueResponse> processSave(String gameId, long elapsedTime) {
+    // 1. 서비스에서 저장 후 최신 객체 받아오기
+    SudokuGame game = service.saveProgress(gameId, elapsedTime);
+
+    // 2. 응답 DTO 조립하여 반환
+    return ResponseEntity.ok(new GameContinueResponse(
+        gameId,
+        game.getPuzzleBoard().getCellSnapshots(),
+        game.getStatus().name(),
+        game.getDifficulty(),
+        game.getLife(),
+        game.getAccumulatedSeconds()
+    ));
   }
 
 }

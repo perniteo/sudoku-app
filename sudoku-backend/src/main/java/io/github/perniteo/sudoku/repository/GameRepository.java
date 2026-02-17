@@ -11,4 +11,11 @@ public interface GameRepository {
   Optional<SudokuGame> findById(String gameId);
 
   void delete(String gameId);
+
+  // 🎯 default를 붙이면 구현체들이 강제로 오버라이드 안 해도 됩니다!
+  default void saveWithTTL(String userId, SudokuGame game, long seconds) {
+    // 기본값은 그냥 일반 save 호출
+    save(userId, game);
+  }
+
 }

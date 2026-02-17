@@ -1,13 +1,17 @@
 package io.github.perniteo.sudoku.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import io.github.perniteo.sudoku.controller.dto.PlaceResponse;
+import io.github.perniteo.sudoku.domain.GameRecord;
 import io.github.perniteo.sudoku.domain.PlaceResult;
 import io.github.perniteo.sudoku.domain.SudokuGame;
 import io.github.perniteo.sudoku.dto.SudokuBoardData;
+import io.github.perniteo.sudoku.repository.GameRecordRepository;
 import io.github.perniteo.sudoku.repository.GameRepository;
 import io.github.perniteo.sudoku.util.generator.GeneratedSudoku;
 import io.github.perniteo.sudoku.util.generator.SudokuGenerator;
 import jakarta.transaction.Transactional;
+import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -22,6 +26,15 @@ public class SudokuGameService {
   private final AtomicLong idGenerator = new AtomicLong();
   private final BoardLoadService boardLoadService;
   private final GameRepository gameRepository;
+  private final GameRecordRepository gameRecordRepository;
+
+  @Transactional
+  public SudokuGame saveProgress(String userId, long elapsedTime) {
+    SudokuGame game = getGame(userId);
+    game.updateTime(elapsedTime);
+    gameRepository.save(userId, game); // Redis 저장 (기존 메서드 활용)
+    return game;
+  }
 
   @Transactional
   public void saveGame(String userId, SudokuGame game) {
@@ -52,24 +65,47 @@ public class SudokuGameService {
     return userId;
   }
 
-  public PlaceResult placeNumber(String userId, int row, int col, int value, long elapsedTime) {
-    // 1. Redis에서 데이터 Fetch 및 Domain 복구
+  @Transactional
+  public PlaceResponse placeNumber(String userId, int row, int col, int value, long elapsedTime) {
     SudokuGame game = getGame(userId);
-
-    // 2. Pure Java 도메인 로직 수행 (메모리 내 상태 변경)
     PlaceResult result = game.placeNumber(row, col, value);
-
     game.updateTime(elapsedTime);
 
-    // 3. 결과에 따른 후처리
+    // 🎯 삭제나 업데이트 전에 최종 상태 스냅샷을 먼저 만듭니다.
+    PlaceResponse response = new PlaceResponse(
+        result.name(),
+        game.getPuzzleBoard().getCellSnapshots(),
+        game.getLife(),
+        game.getStatus().name()
+    );
+
     if (result == PlaceResult.GAME_OVER || result == PlaceResult.COMPLETED) {
-      // 게임이 종료된 경우 Redis에서 삭제 (필요시 DB 기록 로직 추가)
-      gameRepository.delete(userId);
+      // [영구 저장] PostgreSQL
+      saveRecordToDb(userId, game);
+      // 2. 🎯 Redis 데이터를 지우지 않고 '짧은 수명'으로 다시 저장
+      // (프론트엔드가 최종 화면을 그릴 시간을 벌어줌 + 유저 이탈 시 자동 삭제)
+      gameRepository.saveWithTTL(userId, game, 600); // 600초(10분) 뒤 자동 삭제
     } else {
-      // 진행 중인 경우 변경된 상태(Cell, Memo, Life 등)를 Redis에 덮어쓰기
+      // [업데이트] Redis
       gameRepository.save(userId, game);
     }
-    return result;
+
+    return response; // 🎯 조립된 응답을 컨트롤러로 리턴
+  }
+
+  private void saveRecordToDb(String userId, SudokuGame game) {
+    // 1. 엔티티 생성 (아까 만든 GameRecord)
+    GameRecord record = GameRecord.builder()
+        .email(userId.replace("user:", "")) // 접두사 제거
+        .difficulty(game.getDifficulty())
+        .elapsedTime(game.getAccumulatedSeconds())
+        .life(game.getLife())
+        .status(game.getStatus())
+        .completedAt(LocalDateTime.now())
+        .build();
+
+    // 2. JPA를 통해 PostgreSQL에 저장
+    gameRecordRepository.save(record);
   }
 
 

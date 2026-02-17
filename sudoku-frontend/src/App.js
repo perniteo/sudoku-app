@@ -132,39 +132,15 @@ function App() {
     }
   };
 
-  // 로그인 성공 시 실행할 함수
-  const onLoginSuccess = async (token) => {
-    localStorage.setItem("token", token);
-    setUser({ token });
+  const onLoginSuccess = async (newToken) => {
+    localStorage.setItem("token", newToken);
+    setToken(newToken); // 👈 상태가 바뀌면 아래 useEffect가 자동으로 반응함
+    setUser({ token: newToken });
 
-    // 1. 만약 현재 게임이 완료(COMPLETED) 상태라면 서버에 기록 저장 요청
-    if (game && game.status === "COMPLETED") {
-      try {
-        await fetch(`/games/${game.gameId}/record`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            difficulty: game.difficulty,
-            elapsedTime: seconds,
-          }),
-        });
-        setStatusMessage("기록이 성공적으로 저장되었습니다!");
-      } catch (e) {
-        console.error("기록 저장 실패:", e);
-      }
-    }
-
-    // checkRecentGame(token); // 로그인 후 이어하기 체크 (선택사항)
-    // 2. 화면 모드 결정: 게임 완료 상태면 그대로 두고, 아니면 메뉴로
-    if (game && game.status === "COMPLETED") {
-      setViewMode("game"); // 오버레이 유지를 위해 game 모드로
-    } else {
-      setViewMode("menu");
-    }
+    // checkRecentGame(newToken); ❌ 이 줄을 삭제하여 중복 호출 방지
+    setViewMode("menu");
   };
+
   // 메모 저장 함수 (게임 상태가 바뀔 때마다 호출, placeNumber에서도 호출)
   const saveNoteToServer = useCallback(
     async (row, col, value) => {
@@ -190,7 +166,9 @@ function App() {
 
   // 이어하기 데이터가 있는지 서버에 확인
 
-  const checkRecentGame = useCallback(async (token) => {
+  const checkRecentGame = useCallback(async (passedToken) => {
+    // 🎯 중요: 상태값 대신 인자로 받은 passedToken이나 로컬스토리지를 직접 참조
+    const activeToken = passedToken || localStorage.getItem("token");
     const savedId = localStorage.getItem("sudoku_game_id");
 
     // 1. 식별자가 아예 없으면 서버에 물어볼 필요도 없음
@@ -201,12 +179,13 @@ function App() {
     const baseUrl = "http://localhost:8080";
 
     // 2. URL 결정: 토큰 있으면 /games (백엔드가 JWT 우선), 없으면 /games/anon:uuid
-    const url = token ? `${baseUrl}/games` : `${baseUrl}/games/${savedId}`;
+    const url = activeToken
+      ? `${baseUrl}/games`
+      : `${baseUrl}/games/${savedId}`;
 
     try {
       const headers = { "Content-Type": "application/json" };
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-
+      if (activeToken) headers["Authorization"] = `Bearer ${activeToken}`;
       const response = await fetch(url, { headers });
 
       // 3. 서버가 200 OK를 주면 게임 데이터가 있는 것
@@ -233,52 +212,59 @@ function App() {
     }
   }, []);
 
-  // 게임 저장 및 종료 함수 (메인 메뉴로 돌아가기)
   const saveAndExit = async () => {
     if (!game) return;
 
     const token = localStorage.getItem("token");
     const savedId = localStorage.getItem("sudoku_game_id");
     const baseUrl = "http://localhost:8080";
-
-    // 1. 서버 결정 (로그인 우선)
     const url = token
       ? `${baseUrl}/games/save`
       : `${baseUrl}/games/${savedId}/save`;
 
     try {
-      // 2. 현재 경과 시간(seconds)을 서버에 저장
       const res = await fetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           ...(token && { Authorization: `Bearer ${token}` }),
         },
-        body: JSON.stringify({ elapsedTime: seconds }), // 👈 백엔드 DTO 필드명과 일치
+        body: JSON.stringify({ elapsedTime: seconds }),
       });
 
       if (res.ok) {
-        console.log("게임 진행 상황 저장 완료");
+        // 🎯 1. 서버가 보내준 따끈따끈한 최신 데이터를 파싱합니다.
+        const data = await res.json();
+        console.log("서버 저장 및 최신 데이터 수신 완료:", data);
+
+        // 🎯 2. 메뉴로 가기 전에 정보를 즉시 최신화합니다.
+        setSavedGameInfo({
+          difficulty: data.difficulty,
+          life: data.life,
+          elapsedTime: data.elapsedTime || data.accumulatedSeconds,
+        });
+        setHasSavedGame(true);
+
+        // 🎯 3. 마지막으로 UI를 전환합니다.
+        setGame(null);
+        setViewMode("menu");
+      } else {
+        alert("저장에 실패했습니다.");
       }
     } catch (error) {
-      console.error("저장 중 에러 발생:", error);
+      console.error("저장 중 네트워크 에러:", error);
     }
-
-    // 3. UI 정리 및 메뉴 이동
-    setGame(null);
-    setViewMode("menu");
   };
 
   useEffect(() => {
     const savedId = localStorage.getItem("sudoku_game_id");
     const currentToken = localStorage.getItem("token");
 
-    // 게임 중이 아닐 때, 데이터가 존재하면 일단 서버에 물어보기
-    if (!game && (currentToken || savedId)) {
-      // console.log("새로고침/메뉴진입 체크 시작"); // 디버깅용
+    // 🎯 정확히 '메뉴' 화면일 때만 서버에 데이터 확인 요청
+    if (!game && viewMode === "menu" && (currentToken || savedId)) {
       checkRecentGame(currentToken);
     }
-  }, [game === null, viewMode]); // game이 꺼지거나 화면이 바뀔 때 실행
+  }, [viewMode, game === null, token]); // 👈 token 상태 변화도 감시 목록에 추가
 
   // 1. 메모 토글 함수 (깊은 복사 적용)
   const toggleNote = useCallback(
@@ -497,17 +483,30 @@ function App() {
     }
   };
 
+  const handleLogout = () => {
+    // 1. 저장소 청소
+    localStorage.removeItem("token");
+    localStorage.removeItem("sudoku_game_id"); // 익명 정보도 같이 삭제 권장
+
+    // 2. 리액트 상태 초기화 (이게 바뀌어야 UI가 반응함)
+    setToken(null);
+    setUser(null);
+    setHasSavedGame(false);
+    setSavedGameInfo(null);
+
+    // 3. 화면 이동
+    setViewMode("menu");
+    setStatusMessage("로그아웃 되었습니다.");
+  };
+
   return (
     <div style={{ padding: "20px", position: "relative" }}>
       <h1>Sudoku</h1>
 
       <Header
-        token={localStorage.getItem("token")}
+        token={token} // localStorage 대신 상태값 사용
         onLoginClick={() => setViewMode("SIGNIN")}
-        onLogout={() => {
-          localStorage.removeItem("token");
-          window.location.reload();
-        }}
+        onLogout={handleLogout} // 👈 새로 만든 함수 연결
       />
 
       {!game ? (

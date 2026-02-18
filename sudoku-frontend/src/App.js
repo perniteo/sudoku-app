@@ -28,11 +28,39 @@ function App() {
   const [savedGameInfo, setSavedGameInfo] = useState(null); // 서버에서 받은 이어하기 게임 정보 { difficulty, life, elapsedTime }
 
   const [isRecordOpen, setIsRecordOpen] = useState(false);
+  const API_BASE_URL = process.env.REACT_APP_API_URL;
+
+  const [userStats, setUserStats] = useState({ records: [], summary: null });
+  const [isStatsLoading, setIsStatsLoading] = useState(false);
+
+  // 🎯 기록실 데이터를 가져오는 공통 함수
+  const fetchUserStats = async (passedToken) => {
+    const activeToken = passedToken || token;
+    if (!activeToken) return;
+
+    setIsStatsLoading(true);
+    try {
+      const res = await fetch(
+        `${process.env.REACT_APP_API_URL}/api/records/all`,
+        {
+          headers: { Authorization: `Bearer ${activeToken}` },
+        },
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setUserStats(data); // { records: [...], summary: {...} }
+      }
+    } catch (e) {
+      console.error("통계 로드 실패:", e);
+    } finally {
+      setIsStatsLoading(false);
+    }
+  };
 
   // 로그인 시도
   const onLoginSubmit = async (isLoginView, email, password, nickname) => {
     const endpoint = isLoginView ? "/api/auth/sign-in" : "/api/auth/signup";
-    const url = `http://localhost:8080${endpoint}`;
+    const url = `${API_BASE_URL}${endpoint}`;
 
     try {
       const res = await fetch(url, {
@@ -87,7 +115,9 @@ function App() {
     setStatusMessage("이전 게임 불러오는 중...");
 
     // 2. URL 결정 (로그인 우선순위)
-    const url = token ? "/games" : `/games/${savedId}`;
+    const url = token
+      ? `${API_BASE_URL}/games`
+      : `${API_BASE_URL}/games/${savedId}`;
 
     try {
       const headers = { "Content-Type": "application/json" };
@@ -152,7 +182,7 @@ function App() {
 
       try {
         // 백엔드에 메모 업데이트 API가 있다고 가정 (없다면 컨트롤러에 추가 필요)
-        await fetch(`http://localhost:8080/games/${game.gameId}/memo`, {
+        await fetch(`${API_BASE_URL}/games/${game.gameId}/memo`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -179,12 +209,11 @@ function App() {
       setHasSavedGame(false);
       return;
     }
-    const baseUrl = "http://localhost:8080";
 
     // 2. URL 결정: 토큰 있으면 /games (백엔드가 JWT 우선), 없으면 /games/anon:uuid
     const url = activeToken
-      ? `${baseUrl}/games`
-      : `${baseUrl}/games/${savedId}`;
+      ? `${API_BASE_URL}/games`
+      : `${API_BASE_URL}/games/${savedId}`;
 
     try {
       const headers = { "Content-Type": "application/json" };
@@ -220,10 +249,9 @@ function App() {
 
     const token = localStorage.getItem("token");
     const savedId = localStorage.getItem("sudoku_game_id");
-    const baseUrl = "http://localhost:8080";
     const url = token
-      ? `${baseUrl}/games/save`
-      : `${baseUrl}/games/${savedId}/save`;
+      ? `${API_BASE_URL}/games/save`
+      : `${API_BASE_URL}/games/${savedId}/save`;
 
     try {
       const res = await fetch(url, {
@@ -279,17 +307,14 @@ function App() {
 
       const token = localStorage.getItem("token");
       try {
-        const res = await fetch(
-          `http://localhost:8080/games/${game.gameId}/memo`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              ...(token && { Authorization: `Bearer ${token}` }),
-            },
-            body: JSON.stringify({ row, col, value }),
+        const res = await fetch(`${API_BASE_URL}/games/${game.gameId}/memo`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token && { Authorization: `Bearer ${token}` }),
           },
-        );
+          body: JSON.stringify({ row, col, value }),
+        });
 
         if (res.ok) {
           const data = await res.json();
@@ -323,7 +348,7 @@ function App() {
       setStatusMessage("숫자 입력 중...");
 
       try {
-        const res = await fetch(`/games/${game.gameId}/place`, {
+        const res = await fetch(`${API_BASE_URL}/games/${game.gameId}/place`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -356,6 +381,7 @@ function App() {
     },
     [game, seconds, isPlacing],
   );
+
   useEffect(() => {
     const handleKeyDown = (e) => {
       // 1. 방어 코드: 이벤트 객체나 key가 없으면 즉시 종료
@@ -448,7 +474,9 @@ function App() {
     const token = localStorage.getItem("token");
 
     // 2. URL 결정 (기존 ID가 있으면 경로에 추가)
-    const url = savedId ? `/games/start/${savedId}` : "/games/start";
+    const url = savedId
+      ? `${API_BASE_URL}/games/start/${savedId}`
+      : `${API_BASE_URL}/games/start`;
     try {
       const res = await fetch(url, {
         method: "POST", // 👈 반드시 POST여야 405 에러가 안 납니다!
@@ -510,13 +538,18 @@ function App() {
         token={token} // localStorage 대신 상태값 사용
         onLoginClick={() => setViewMode("SIGNIN")}
         onLogout={handleLogout} // 👈 새로 만든 함수 연결
-        onShowRecords={() => setIsRecordOpen(true)} // 기록 보기 버튼 핸들러
+        onShowRecords={() => {
+          setIsRecordOpen(true);
+          fetchUserStats();
+        }} // 기록 보기 버튼 핸들러
       />
 
       {/* 🎯 기록실 오버레이 위치: 
         조건부 렌더링으로, true일 때만 기존 화면 위에 '공중에 떠서' 나타납니다. */}
       {isRecordOpen && (
         <RecordOverlay
+          records={userStats.records} // 🎯 App에서 관리하는 데이터 전달
+          summary={userStats.summary} // 🎯 App에서 관리하는 통계 전달
           token={token}
           onClose={() => setIsRecordOpen(false)}
           formatTime={formatTime}

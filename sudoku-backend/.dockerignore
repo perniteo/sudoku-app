@@ -1,0 +1,5 @@
+# backend/.dockerignore
+.gradle/
+bin/
+out/
+.git/

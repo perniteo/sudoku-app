@@ -1,31 +1,5 @@
-import React, { useEffect, useState } from "react";
-
-const RecordOverlay = ({ token, onClose, formatTime }) => {
-  const [data, setData] = useState({ records: [], summary: null }); // 🎯 통합 데이터 상태
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!token) return;
-
-    const fetchData = async () => {
-      try {
-        const res = await fetch("http://localhost:8080/api/records/all", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (res.ok) {
-          const result = await res.json();
-          setData(result); // { records: [...], summary: {...} }
-        }
-      } catch (e) {
-        console.error("데이터 로드 실패", e);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, [token]);
-
+// 🎯 App.js에서 data(records, summary)와 loading 상태를 받습니다.
+const RecordOverlay = ({ records, summary, loading, onClose, formatTime }) => {
   // 🎯 날짜 포맷 함수 (분/초 포함)
   const formatFullDate = (dateString) => {
     const date = new Date(dateString);
@@ -52,23 +26,21 @@ const RecordOverlay = ({ token, onClose, formatTime }) => {
           <div style={styles.loading}>데이터 동기화 중...</div>
         ) : (
           <>
-            {/* 상단 요약 카드 */}
+            {/* 상단 요약 카드 (App.js에서 받은 summary 사용) */}
             <div style={styles.summaryGrid}>
               <div style={styles.statCard}>
                 <div style={styles.statLabel}>TOTAL PLAYS</div>
-                <div style={styles.statValue}>
-                  {data.summary?.totalGames || 0}
-                </div>
+                <div style={styles.statValue}>{summary?.totalGames || 0}</div>
               </div>
               <div style={styles.statCard}>
                 <div style={styles.statLabel}>WIN RATE</div>
                 <div style={styles.statValue}>
-                  {data.summary?.winRate?.toFixed(1) || 0}%
+                  {summary?.winRate?.toFixed(1) || 0}%
                 </div>
               </div>
             </div>
 
-            {/* 상세 리스트 */}
+            {/* 상세 리스트 (App.js에서 받은 records 사용) */}
             <div style={styles.listContainer}>
               <table style={styles.table}>
                 <thead>
@@ -82,7 +54,7 @@ const RecordOverlay = ({ token, onClose, formatTime }) => {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.records.map((r) => (
+                  {records.map((r) => (
                     <tr key={r.id} style={styles.tr}>
                       <td style={styles.dateCell}>
                         {formatFullDate(r.completedAt)}
@@ -110,7 +82,7 @@ const RecordOverlay = ({ token, onClose, formatTime }) => {
                   ))}
                 </tbody>
               </table>
-              {data.records.length === 0 && (
+              {records.length === 0 && (
                 <div style={styles.empty}>기록이 없습니다.</div>
               )}
             </div>

@@ -19,4 +19,7 @@ public class SudokuBoardData {
   private int[][] initialBoard;
   @JsonProperty("answer_board")
   private int[][] solutionBoard;
+  @JsonProperty("id")
+  private long boardId;
+
 }

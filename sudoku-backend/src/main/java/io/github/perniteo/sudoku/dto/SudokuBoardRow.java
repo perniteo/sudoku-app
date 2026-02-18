@@ -8,6 +8,7 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 public class SudokuBoardRow {
+  private Long boardId; // SELECT 결과
   private int difficulty;
   private String startJson;
   private String answerJson;

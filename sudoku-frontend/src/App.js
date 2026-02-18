@@ -6,6 +6,7 @@ import Header from "./components/Header";
 import MainMenu from "./components/MainMenu";
 import GameInfo from "./components/GameInfo";
 import NumberPad from "./components/NumberPad";
+import RecordOverlay from "./components/RecordOverlay";
 
 function App() {
   const [game, setGame] = useState(null);
@@ -25,6 +26,8 @@ function App() {
   const [token, setToken] = useState(localStorage.getItem("token") || null);
 
   const [savedGameInfo, setSavedGameInfo] = useState(null); // 서버에서 받은 이어하기 게임 정보 { difficulty, life, elapsedTime }
+
+  const [isRecordOpen, setIsRecordOpen] = useState(false);
 
   // 로그인 시도
   const onLoginSubmit = async (isLoginView, email, password, nickname) => {
@@ -507,7 +510,18 @@ function App() {
         token={token} // localStorage 대신 상태값 사용
         onLoginClick={() => setViewMode("SIGNIN")}
         onLogout={handleLogout} // 👈 새로 만든 함수 연결
+        onShowRecords={() => setIsRecordOpen(true)} // 기록 보기 버튼 핸들러
       />
+
+      {/* 🎯 기록실 오버레이 위치: 
+        조건부 렌더링으로, true일 때만 기존 화면 위에 '공중에 떠서' 나타납니다. */}
+      {isRecordOpen && (
+        <RecordOverlay
+          token={token}
+          onClose={() => setIsRecordOpen(false)}
+          formatTime={formatTime}
+        />
+      )}
 
       {!game ? (
         <MainMenu

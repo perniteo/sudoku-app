@@ -97,6 +97,7 @@ public class SudokuGameService {
     // 1. 엔티티 생성 (아까 만든 GameRecord)
     GameRecord record = GameRecord.builder()
         .email(userId.replace("user:", "")) // 접두사 제거
+        .boardId(game.getBoardId())
         .difficulty(game.getDifficulty())
         .elapsedTime(game.getAccumulatedSeconds())
         .life(game.getLife())

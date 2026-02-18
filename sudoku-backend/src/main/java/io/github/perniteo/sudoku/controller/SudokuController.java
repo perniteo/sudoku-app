@@ -7,6 +7,7 @@ import io.github.perniteo.sudoku.controller.dto.GameStartRequest;
 import io.github.perniteo.sudoku.controller.dto.GameStartResponse;
 import io.github.perniteo.sudoku.controller.dto.PlaceRequest;
 import io.github.perniteo.sudoku.controller.dto.PlaceResponse;
+import io.github.perniteo.sudoku.domain.GameStatus;
 import io.github.perniteo.sudoku.domain.PlaceResult;
 import io.github.perniteo.sudoku.domain.SudokuGame;
 import io.github.perniteo.sudoku.service.SudokuGameService;
@@ -106,6 +107,12 @@ public class SudokuController {
   private ResponseEntity<GameContinueResponse> fetchGame(String gameId) {
     try {
       SudokuGame game = service.getGame(gameId);
+
+      // 🎯 깬 게임이거나 게임오버된 판은 '이어하기' 대상에서 제외!
+      if (game.getStatus() == GameStatus.COMPLETED || game.getStatus() == GameStatus.FAILED) {
+        return ResponseEntity.notFound().build(); // 404를 주면 프론트에서 이어하기 버튼이 사라짐
+      }
+
       return ResponseEntity.ok(new GameContinueResponse(
           gameId,
           game.getPuzzleBoard().getCellSnapshots(),

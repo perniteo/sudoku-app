@@ -46,6 +46,9 @@ public class GameRecord {
     @Column(nullable = false, updatable = false)
     private LocalDateTime completedAt;
 
+    @Column(nullable = false)
+    private Long boardId; // 추가
+
     // 생성 시점에 시간을 자동으로 넣어주는 편의 메서드
     @PrePersist
     protected void onCreate() {

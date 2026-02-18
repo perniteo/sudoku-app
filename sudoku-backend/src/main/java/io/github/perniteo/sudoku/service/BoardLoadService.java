@@ -29,6 +29,7 @@ public class BoardLoadService {
         .difficulty(difficulty)
         .initialBoard(start)
         .solutionBoard(answer)
+        .boardId(row.getBoardId())
         .build();
   }
 

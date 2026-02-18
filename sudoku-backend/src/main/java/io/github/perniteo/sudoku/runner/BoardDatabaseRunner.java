@@ -20,9 +20,9 @@ public class BoardDatabaseRunner implements CommandLineRunner {
 
     // 1. 모듈에서 데이터 가져오기 (new 가능!)
     BoardGeneratorTemp generator = new BoardGeneratorTemp();
-    int attempt = 1000;
+    int attempt = 100;
     System.out.println("Attempt : " + attempt + " times...");
-    List<SudokuBoardData> dataList = generator.generate(11, attempt);
+    List<SudokuBoardData> dataList = generator.generate(4, attempt);
 
     // 2. DB에 꽂기
     for (SudokuBoardData data : dataList) {

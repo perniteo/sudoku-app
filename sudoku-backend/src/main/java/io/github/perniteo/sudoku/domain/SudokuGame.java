@@ -15,12 +15,14 @@ public class SudokuGame {
   private int life;
   private int difficulty;
   private long accumulatedSeconds; // 👈 추가: 누적 플레이 시간(초)
+  private final long boardId;
 //  private final String puzzleJson;
 //  private final String answerJson;
 
   public SudokuGame(GeneratedSudoku generated) {
     this.puzzleBoard = generated.getPuzzleBoard();
     this.answerBoard = generated.getAnswerBoard();
+    this.boardId = generated.getBoardId();
     this.startedAt = LocalDateTime.now();
     this.status = GameStatus.PLAYING;
     this.life = 3;
@@ -41,11 +43,12 @@ public class SudokuGame {
     this.startedAt = LocalDateTime.now();
     this.life = 3;
     this.status = GameStatus.PLAYING;
+    this.boardId = boardData.getBoardId();
   }
 
   // [추가] Redis DTO로부터 도메인 객체 복구 (Private 생성자 활용)
   private SudokuGame(LocalDateTime startedAt, GameStatus status, SudokuBoard puzzleBoard,
-      SudokuBoard answerBoard, int life, int difficulty, long accumulatedSeconds) {
+      SudokuBoard answerBoard, int life, int difficulty, long accumulatedSeconds, long boardId) {
     this.startedAt = startedAt;
     this.status = status;
     this.puzzleBoard = puzzleBoard;
@@ -53,6 +56,7 @@ public class SudokuGame {
     this.life = life;
     this.difficulty = difficulty;
     this.accumulatedSeconds = accumulatedSeconds;
+    this.boardId = boardId;
   }
 
   // [추가] Redis -> Domain 브릿지 메서드
@@ -64,7 +68,8 @@ public class SudokuGame {
         SudokuBoard.from(dto.getAnswerBoard()),          // 정답지는 단순 숫자 복구
         dto.getLife(),
         dto.getDifficulty(),
-        dto.getElapsedTime()
+        dto.getElapsedTime(),
+        dto.getBoardId()
     );
   }
 
@@ -78,6 +83,7 @@ public class SudokuGame {
         .life(this.life)
         .difficulty(this.difficulty)
         .elapsedTime(this.accumulatedSeconds)
+        .boardId(this.boardId)
         .build();
   }
 
@@ -106,6 +112,8 @@ public class SudokuGame {
   public SudokuBoard getPuzzleBoard() { return puzzleBoard; }
 
   public int getDifficulty() {return this.difficulty;}
+
+  public long getBoardId() { return boardId; }
 
   public PlaceResult placeNumber(int row, int col, int value) {
     if (status != GameStatus.PLAYING) return PlaceResult.GAME_OVER;

@@ -21,6 +21,7 @@ public class SudokuRedisDto {
   private int life;
   private int difficulty;
   private long elapsedTime; // 실제 플레이한 초(seconds)를 저장할 필드
+  private long boardId; // 추가
 
 //  // 도메인(SudokuGame) -> Redis DTO 변환
 //  public static SudokuRedisDto from(SudokuGame game) {

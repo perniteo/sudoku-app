@@ -1,12 +1,14 @@
-# 🎯 최신 실무 표준인 Eclipse Temurin 이미지 사용 (Java 17)
-FROM eclipse-temurin:17-jdk-alpine
-
-# 2. 실행 파일을 복사할 위치 설정
+# 1단계: 빌드 스테이지 (Gradle 환경)
+FROM gradle:8.5-jdk17 AS build
 WORKDIR /app
+COPY . .
+# 🎯 여기서 직접 jar를 빌드합니다. (test는 제외해서 속도 업)
+RUN ./gradlew clean build -x test
 
-# 3. 빌드된 Jar 파일을 복사 (빌드 도구에 따라 경로 확인 필요)
-# Gradle: build/libs/*.jar  |  Maven: target/*.jar
-COPY build/libs/*.jar app.jar
-
-# 4. 앱 실행
+# 2단계: 실행 스테이지 (가벼운 JRE 환경)
+FROM eclipse-temurin:17-jdk-alpine
+WORKDIR /app
+# 🎯 1단계에서 만든 jar 파일만 쏙 가져옵니다.
+COPY --from=build /app/build/libs/*.jar app.jar
+EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]

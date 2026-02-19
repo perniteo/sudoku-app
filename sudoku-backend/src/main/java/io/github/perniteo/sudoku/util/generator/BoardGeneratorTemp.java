@@ -292,9 +292,15 @@ public class BoardGeneratorTemp {
     return solutionCount == 1;
   }
 
-  public ArrayList<SudokuBoardData> generate(int level, int number) {
-    ArrayList<SudokuBoardData> generated = new ArrayList<>();
+  private void initList() {
+    list = new ArrayList<>();
     for (int i = 1; i <= 9; i++) list.add(i);
+  }
+
+  public ArrayList<SudokuBoardData> generate(int level, int number) {
+    initList();
+    ArrayList<SudokuBoardData> generated = new ArrayList<>();
+
     for (int i = 0; i < number; i++) {
       int[][] cBoard = createBoard3();
       int[][] answer = new int[9][9];

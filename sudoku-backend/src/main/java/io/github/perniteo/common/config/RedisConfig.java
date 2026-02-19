@@ -3,15 +3,51 @@ package io.github.perniteo.common.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.connection.RedisPassword;
+import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
+import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
+import org.springframework.data.redis.connection.lettuce.LettucePoolingClientConfiguration;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
 @Configuration
 public class RedisConfig {
+
+  @Value("${REDIS_HOST:localhost}")
+  private String host;
+
+  @Value("${REDIS_PORT:6379}")
+  private int port;
+
+  @Value("${REDIS_PASSWORD:}")
+  private String password;
+
+  @Bean
+  public RedisConnectionFactory redisConnectionFactory() {
+    // 🎯 1. 커넥션 풀 설정 (미리 연결해두기)
+    GenericObjectPoolConfig<Object> poolConfig = new GenericObjectPoolConfig<>();
+    poolConfig.setMaxTotal(10);
+    poolConfig.setMaxIdle(10);
+    poolConfig.setMinIdle(5); // 최소 5개는 항상 연결 유지 (0.1초 컷의 핵심)
+
+    // 🎯 2. Lettuce 전용 풀 및 SSL 설정 (Upstash 필수)
+    LettucePoolingClientConfiguration clientConfig = LettucePoolingClientConfiguration.builder()
+        .poolConfig(poolConfig)
+        .useSsl() // 🔥 rediss:// 를 위한 SSL 활성화
+        .build();
+
+    // 🎯 3. 서버 정보 설정 (환경 변수에서 가져옴)
+    RedisStandaloneConfiguration serverConfig = new RedisStandaloneConfiguration(host, port);
+    serverConfig.setPassword(RedisPassword.of(password));
+
+    return new LettuceConnectionFactory(serverConfig, clientConfig);
+  }
 
   @Bean
   public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory connectionFactory) {

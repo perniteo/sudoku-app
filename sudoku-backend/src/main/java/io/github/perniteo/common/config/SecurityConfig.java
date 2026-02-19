@@ -17,6 +17,7 @@ public class SecurityConfig {
 
   private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
+
   // 1. 암호화 도구 등록 (AuthService에서 주입받아 사용)
   @Bean
   public BCryptPasswordEncoder passwordEncoder() {
@@ -43,15 +44,19 @@ public class SecurityConfig {
   public org.springframework.web.cors.CorsConfigurationSource corsConfigurationSource() {
     org.springframework.web.cors.CorsConfiguration configuration = new org.springframework.web.cors.CorsConfiguration();
 
+
     // 🎯 로컬 테스트용 + Vercel 배포용 주소(생성 예정) 추가
     configuration.setAllowedOrigins(java.util.List.of(
         "http://localhost:3000", // React
         "https://sudoku-app-production-fc40.up.railway.app", // 내 API 주소
-        "https://sudoku-f2y8e8742-perniteos-projects.vercel.app/" // 👈 Vercel에서 받을 주소
+        "https://sudoku-f2y8e8742-perniteos-projects.vercel.app" // 👈 Vercel에서 받을 주소
     ));
     configuration.addAllowedHeader("*"); // 모든 헤더 허용
     configuration.addAllowedMethod("*"); // 모든 HTTP 메서드 허용
     configuration.setAllowCredentials(true); // 인증정보(쿠키 등) 허용
+
+    // 🔥 [이걸 추가!] 3600초(1시간) 동안 OPTIONS 요청 결과를 브라우저에 캐싱함
+    configuration.setMaxAge(3600L);
 
     org.springframework.web.cors.UrlBasedCorsConfigurationSource source = new org.springframework.web.cors.UrlBasedCorsConfigurationSource();
     source.registerCorsConfiguration("/**", configuration);

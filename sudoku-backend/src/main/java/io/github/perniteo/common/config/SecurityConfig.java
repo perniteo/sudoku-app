@@ -47,9 +47,11 @@ public class SecurityConfig {
 
     // 🎯 로컬 테스트용 + Vercel 배포용 주소(생성 예정) 추가
     configuration.setAllowedOrigins(java.util.List.of(
-        "http://localhost:3000", // React
+        "http://localhost:3000",
         "https://sudoku-app-production-fc40.up.railway.app", // 내 API 주소
-        "https://sudoku-f2y8e8742-perniteos-projects.vercel.app" // 👈 Vercel에서 받을 주소
+        "https://sudoku-app-liard-eta.vercel.app",         // 현재 에러난 주소
+        "https://sudoku-app-git-main-perniteos-projects.vercel.app", // 브랜치 주소
+        "https://sudoku-app.vercel.app"                    // 🎯 (예상되는) 공식 대표 주소
     ));
     configuration.addAllowedHeader("*"); // 모든 헤더 허용
     configuration.addAllowedMethod("*"); // 모든 HTTP 메서드 허용

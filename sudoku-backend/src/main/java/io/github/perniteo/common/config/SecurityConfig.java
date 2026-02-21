@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
@@ -27,15 +28,22 @@ public class SecurityConfig {
   // 2. 보안 필터 설정 (어떤 API를 열고 닫을지 결정)
   @Bean
   public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-    http  // 1. CORS 설정 연결
-          .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-          .csrf(csrf -> csrf.disable()) // 1. 이거 안 하면 POST 요청 무조건 403 뜹니다.
-          .headers(headers -> headers.frameOptions(frame -> frame.disable())) // H2 콘솔 사용 시 필요
-          .authorizeHttpRequests(auth -> auth
-              .requestMatchers("/api/auth/**").permitAll() // 2. 가입 경로는 무조건 허용
-              .anyRequest().authenticated()               // 3. 우선 테스트를 위해 전체 허용(나중에 수정)
+    http
+        // 1. CSRF 비활성화 (POST 요청 차단의 주범)
+        .csrf(csrf -> csrf.disable())
+        // 2. CORS 연결
+        .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+        // 3. 세션 미사용 (Stateless 설정이 빠지면 403이 날 수 있음)
+        .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+        // 4. H2 콘솔 등 프레임 허용 (필요시)
+        .headers(headers -> headers.frameOptions(f -> f.disable()))
+        // 5. 모든 경로 완전 개방 (테스트용)
+        .authorizeHttpRequests(auth -> auth
+            .anyRequest().permitAll()
         )
+        // 6. 필터 위치 지정 (UsernamePasswordAuthenticationFilter보다 앞에 배치)
         .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+
     return http.build();
   }
 

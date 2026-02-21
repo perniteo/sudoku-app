@@ -177,6 +177,10 @@ public class SudokuController {
       @AuthenticationPrincipal String email,
       @RequestBody GameSaveRequest request
   ) {
+    // 🎯 여기서 401을 던져야 리액트의 Interceptor가 "아! 재발급하자!" 하고 일어납니다.
+    if (email == null || "anonymousUser".equals(email)) {
+      return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+    }
     return processSave("user:" + email, request.getElapsedTime());
   }
 

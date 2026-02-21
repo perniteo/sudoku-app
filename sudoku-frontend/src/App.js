@@ -7,6 +7,7 @@ import MainMenu from "./components/MainMenu";
 import GameInfo from "./components/GameInfo";
 import NumberPad from "./components/NumberPad";
 import RecordOverlay from "./components/RecordOverlay";
+import api from "./api.js"; // Axios 인스턴스
 
 function App() {
   const [game, setGame] = useState(null);
@@ -23,7 +24,9 @@ function App() {
   const [seconds, setSeconds] = useState(0); // 경과 시간 (단위 : 초)
 
   const [isLoginView, setIsLoginView] = useState(true);
-  const [token, setToken] = useState(localStorage.getItem("token") || null);
+  const [token, setToken] = useState(
+    localStorage.getItem("accessToken") || null,
+  );
 
   const [savedGameInfo, setSavedGameInfo] = useState(null); // 서버에서 받은 이어하기 게임 정보 { difficulty, life, elapsedTime }
 
@@ -40,6 +43,7 @@ function App() {
 
     setIsStatsLoading(true);
     try {
+      console.log(process.env.REACT_APP_API_URL);
       const res = await fetch(
         `${process.env.REACT_APP_API_URL}/api/records/all`,
         {
@@ -60,33 +64,33 @@ function App() {
   // 로그인 시도
   const onLoginSubmit = async (isLoginView, email, password, nickname) => {
     const endpoint = isLoginView ? "/api/auth/sign-in" : "/api/auth/signup";
-    const url = `${API_BASE_URL}${endpoint}`;
 
     try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        // 로그인일 땐 nickname 제외, 가입일 땐 포함
-        body: JSON.stringify(
-          isLoginView ? { email, password } : { email, password, nickname },
-        ),
-      });
+      // 🎯 1. Axios로 요청 (JSON.stringify 필요 없음!)
+      const res = await api.post(
+        endpoint,
+        isLoginView ? { email, password } : { email, password, nickname },
+      );
 
-      if (res.ok) {
-        const data = await res.text(); // 스프링이 주는 토큰이나 메시지
-        if (isLoginView) {
-          // [localStorage](https://developer.mozilla.org) 저장
-          localStorage.setItem("token", data);
-          onLoginSuccess(data); // 로그인 성공 상태 업데이트 함수
-          alert("로그인 성공!");
-        } else {
-          alert("회원가입이 완료되었습니다. 로그인을 진행해주세요.");
-          setIsLoginView(true); // 로그인 화면으로 전환
-        }
+      // 🎯 2. 응답 처리 (Axios는 성공 시 res.data에 데이터가 담깁니다)
+      if (isLoginView) {
+        const { accessToken, refreshToken } = res.data;
+
+        // 🎯 3. 토큰 2개 저장 (이제 'token' 하나만 쓰면 안 됩니다!)
+        localStorage.setItem("accessToken", accessToken);
+        localStorage.setItem("refreshToken", refreshToken);
+
+        onLoginSuccess(accessToken); // 기존 상태 업데이트 유지
+        alert("로그인 성공! 🎉");
       } else {
-        alert("실패했습니다. 정보를 확인해주세요.");
+        alert("회원가입 완료! 로그인을 진행해주세요.");
+        setIsLoginView(true);
       }
     } catch (err) {
+      // 🎯 4. 에러 처리 (Axios는 400, 500대 에러를 바로 catch로 보냅니다)
+      // 백엔드의 GlobalExceptionHandler가 주는 메시지를 읽습니다.
+      const errorMsg = err.response?.data || "정보를 확인해주세요.";
+      alert(`실패: ${errorMsg}`);
       console.error("Auth Error:", err);
     }
   };
@@ -103,7 +107,7 @@ function App() {
   };
 
   const continueGame = async () => {
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("accessToken");
     const savedId = localStorage.getItem("sudoku_game_id");
 
     // 1. 식별자가 아예 없으면 중단
@@ -178,7 +182,7 @@ function App() {
   const saveNoteToServer = useCallback(
     async (row, col, value) => {
       if (!game) return;
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("accessToken");
 
       try {
         // 백엔드에 메모 업데이트 API가 있다고 가정 (없다면 컨트롤러에 추가 필요)
@@ -201,7 +205,7 @@ function App() {
 
   const checkRecentGame = useCallback(async (passedToken) => {
     // 🎯 중요: 상태값 대신 인자로 받은 passedToken이나 로컬스토리지를 직접 참조
-    const activeToken = passedToken || localStorage.getItem("token");
+    const activeToken = passedToken || localStorage.getItem("accessToken");
     const savedId = localStorage.getItem("sudoku_game_id");
 
     // 1. 식별자가 아예 없으면 서버에 물어볼 필요도 없음
@@ -247,7 +251,7 @@ function App() {
   const saveAndExit = async () => {
     if (!game) return;
 
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("accessToken");
     const savedId = localStorage.getItem("sudoku_game_id");
     const url = token
       ? `${API_BASE_URL}/games/save`
@@ -289,7 +293,7 @@ function App() {
 
   useEffect(() => {
     const savedId = localStorage.getItem("sudoku_game_id");
-    const currentToken = localStorage.getItem("token");
+    const currentToken = localStorage.getItem("accessToken");
 
     // 🎯 정확히 '메뉴' 화면일 때만 서버에 데이터 확인 요청
     if (!game && viewMode === "menu" && (currentToken || savedId)) {
@@ -305,7 +309,7 @@ function App() {
       // 1. (선택사항) 낙관적 업데이트: 서버 응답 전 UI를 먼저 바꿈 (속도감 up)
       // 기존 toggleNote 로직을 여기에 넣어도 되지만, 일단 서버 응답 동기화를 우선합니다.
 
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("accessToken");
       try {
         const res = await fetch(`${API_BASE_URL}/games/${game.gameId}/memo`, {
           method: "POST",
@@ -343,7 +347,7 @@ function App() {
   const placeNumber = useCallback(
     async (row, col, value) => {
       if (!game || isPlacing) return;
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("accessToken");
       setIsPlacing(true);
       setStatusMessage("숫자 입력 중...");
 
@@ -471,11 +475,14 @@ function App() {
 
     // 1. 저장된 데이터 가져오기
     const savedId = localStorage.getItem("sudoku_game_id");
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("accessToken");
+
+    // 🎯 방어 로직: savedId가 문자열 "undefined"거나 null이면 빈 값을 줍니다.
+    const validId = savedId && savedId !== "undefined" ? savedId : "";
 
     // 2. URL 결정 (기존 ID가 있으면 경로에 추가)
-    const url = savedId
-      ? `${API_BASE_URL}/games/start/${savedId}`
+    const url = validId
+      ? `${API_BASE_URL}/games/start/${validId}`
       : `${API_BASE_URL}/games/start`;
     try {
       const res = await fetch(url, {
@@ -516,7 +523,8 @@ function App() {
 
   const handleLogout = () => {
     // 1. 저장소 청소
-    localStorage.removeItem("token");
+    localStorage.removeItem("accessToken");
+    localStorage.removeItem("refreshToken");
     localStorage.removeItem("sudoku_game_id"); // 익명 정보도 같이 삭제 권장
 
     // 2. 리액트 상태 초기화 (이게 바뀌어야 UI가 반응함)

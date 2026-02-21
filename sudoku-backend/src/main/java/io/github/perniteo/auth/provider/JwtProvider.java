@@ -29,7 +29,7 @@ public class JwtProvider {
   // 🎯 Refresh Token 발급용 메서드 추가
   public String createRefreshToken(String email) {
     // 7일 604800000L
-    long refreshTokenExpiration = 180000L;
+    long refreshTokenExpiration = 604800000L;
     return createToken(email, refreshTokenExpiration);
   }
 

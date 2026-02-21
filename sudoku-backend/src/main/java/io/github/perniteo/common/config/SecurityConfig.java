@@ -33,7 +33,7 @@ public class SecurityConfig {
           .headers(headers -> headers.frameOptions(frame -> frame.disable())) // H2 콘솔 사용 시 필요
           .authorizeHttpRequests(auth -> auth
               .requestMatchers("/api/auth/**").permitAll() // 2. 가입 경로는 무조건 허용
-              .anyRequest().permitAll()                   // 3. 우선 테스트를 위해 전체 허용(나중에 수정)
+              .anyRequest().authenticated()               // 🎯 [수정] 나머지는 무조건 인증 필요!
         )
         .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
     return http.build();

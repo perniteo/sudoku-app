@@ -45,7 +45,7 @@ public class SecurityConfig {
     org.springframework.web.cors.CorsConfiguration configuration = new org.springframework.web.cors.CorsConfiguration();
 
 
-    // 🎯 로컬 테스트용 + Vercel 배포용 주소(생성 예정) 추가
+    // 🎯 로컬 테스트용 + Vercel 배포용 주소 추가
     configuration.setAllowedOrigins(java.util.List.of(
         "http://localhost:3000",
         "https://sudoku-app-production-fc40.up.railway.app", // 내 API 주소

@@ -8,6 +8,7 @@ import GameInfo from "./components/GameInfo";
 import NumberPad from "./components/NumberPad";
 import RecordOverlay from "./components/RecordOverlay";
 import api from "./api.js"; // Axios 인스턴스
+import gameService from "./services/gameService";
 
 function App() {
   const [game, setGame] = useState(null);
@@ -36,25 +37,35 @@ function App() {
   const [userStats, setUserStats] = useState({ records: [], summary: null });
   const [isStatsLoading, setIsStatsLoading] = useState(false);
 
-  // 🎯 기록실 데이터를 가져오는 공통 함수
-  const fetchUserStats = async (passedToken) => {
-    const activeToken = passedToken || token;
-    if (!activeToken) return;
+  // 🎯 서버 데이터 가공 공통 함수
+  const processServerData = useCallback(
+    (data) => ({
+      ...data,
+      id: data.gameId || data.id,
+      board: data.board.map((r) => r.map((c) => c.v)),
+      notes: data.board.map((r) => r.map((c) => Array.from(c.m || []))),
+      life: data.life ?? 3,
+    }),
+    [],
+  );
+
+  // 🎯 기록실 데이터를 가져오는 공통 함수 (Axios로 교체)
+  const fetchUserStats = async () => {
+    // 1. 토큰 체크 (api.js가 알아서 하므로 있으면 보냄)
+    const currentToken = localStorage.getItem("accessToken");
+    if (!currentToken) return;
 
     setIsStatsLoading(true);
     try {
-      console.log(process.env.REACT_APP_API_URL);
-      const res = await fetch(
-        `${process.env.REACT_APP_API_URL}/api/records/all`,
-        {
-          headers: { Authorization: `Bearer ${activeToken}` },
-        },
-      );
-      if (res.ok) {
-        const data = await res.json();
-        setUserStats(data); // { records: [...], summary: {...} }
-      }
+      // 🎯 fetch 대신 우리가 만든 'api' 인스턴스 사용!
+      // baseURL이 이미 설정되어 있으므로 경로만 적으면 됩니다.
+      const res = await api.get("/api/records/all");
+
+      // 🎯 Axios는 응답 데이터가 res.data에 들어있고, JSON 파싱도 자동으로 해줍니다.
+      setUserStats(res.data);
     } catch (e) {
+      // 401 에러가 나면 api.js 인터셉터가 재발급을 시도하고,
+      // 재발급조차 실패했을 때만 이 catch문으로 옵니다.
       console.error("통계 로드 실패:", e);
     } finally {
       setIsStatsLoading(false);
@@ -107,65 +118,14 @@ function App() {
   };
 
   const continueGame = async () => {
-    const token = localStorage.getItem("accessToken");
     const savedId = localStorage.getItem("sudoku_game_id");
-
-    // 1. 식별자가 아예 없으면 중단
-    if (!token && !savedId) {
-      setStatusMessage("진행 중인 게임 정보를 찾을 수 없습니다.");
-      return;
-    }
-
-    setStatusMessage("이전 게임 불러오는 중...");
-
-    // 2. URL 결정 (로그인 우선순위)
-    const url = token
-      ? `${API_BASE_URL}/games`
-      : `${API_BASE_URL}/games/${savedId}`;
-
     try {
-      const headers = { "Content-Type": "application/json" };
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-
-      const res = await fetch(url, { method: "GET", headers });
-
-      if (!res.ok) {
-        throw new Error("진행 중인 게임이 없습니다.");
-      }
-
-      const data = await res.json();
-      console.log("Continued Game Data:", data);
-
-      // 서버가 준 data.board (CellRedisDto[][]) 가공
-      const serverBoard = data.board;
-      const newBoard = serverBoard.map((row) => row.map((cell) => cell.v));
-      const newNotes = serverBoard.map((row) =>
-        row.map((cell) => Array.from(cell.m || [])),
-      );
-
-      // 3. 서버 데이터를 리액트 상태(game)로 주입
-      setGame({
-        ...data,
-        id: data.gameId || data.id, // 백엔드 필드명 확인
-        board: newBoard,
-        life: data.life || 3, // life가 없으면 기본 3
-        difficulty: data.difficulty,
-        // 메모 데이터 초기화 방어 (서버에 없으면 9x9 빈 배열)
-        notes: newNotes,
-      });
-
-      // 4. UI 상태 동기화 (먹통 방지 핵심)
-      if (data.elapsedTime) setSeconds(data.elapsedTime); // 시간 복구
-
-      setSelectedCell({ row: 0, col: 0 }); // 🎯 첫 셀 강제 선택 (키보드 활성화)
-      setViewMode("game"); // 🎯 게임 화면으로 전환 (조작 차단 해제)
-      setIsNoteMode(false); // 노트 모드 초기화
-
-      setStatusMessage("게임을 이어서 시작합니다.");
-      setHasSavedGame(true); // 버튼 상태 동기화
-    } catch (error) {
-      setStatusMessage(error.message);
-      setHasSavedGame(false);
+      const data = await gameService.checkRecentGame(token ? null : savedId);
+      setGame(processServerData(data));
+      setSeconds(data.elapsedTime || data.accumulatedSeconds || 0);
+      setViewMode("game");
+    } catch (e) {
+      setStatusMessage("불러오기 실패");
     }
   };
 
@@ -203,92 +163,41 @@ function App() {
 
   // 이어하기 데이터가 있는지 서버에 확인
 
-  const checkRecentGame = useCallback(async (passedToken) => {
-    // 🎯 중요: 상태값 대신 인자로 받은 passedToken이나 로컬스토리지를 직접 참조
-    const activeToken = passedToken || localStorage.getItem("accessToken");
+  // 🎯 이어하기 체크 (메뉴 진입 시)
+  const checkRecentGame = useCallback(async () => {
     const savedId = localStorage.getItem("sudoku_game_id");
-
-    // 1. 식별자가 아예 없으면 서버에 물어볼 필요도 없음
-    if (!token && !savedId) {
-      setHasSavedGame(false);
-      return;
-    }
-
-    // 2. URL 결정: 토큰 있으면 /games (백엔드가 JWT 우선), 없으면 /games/anon:uuid
-    const url = activeToken
-      ? `${API_BASE_URL}/games`
-      : `${API_BASE_URL}/games/${savedId}`;
-
+    if (!token && !savedId) return setHasSavedGame(false);
     try {
-      const headers = { "Content-Type": "application/json" };
-      if (activeToken) headers["Authorization"] = `Bearer ${activeToken}`;
-      const response = await fetch(url, { headers });
-
-      // 3. 서버가 200 OK를 주면 게임 데이터가 있는 것
-      if (response.ok) {
-        const data = await response.json(); // 서버 응답 데이터 (게임 정보)
-
-        // 만약 백엔드가 단순히 true/false만 주는 게 아니라 게임 객체를 준다면
-        // 여기서 바로 setGame을 해서 자동 이어하기를 시킬 수도 있음
-        setHasSavedGame(true);
-        // 🎯 메인 메뉴 UI에 뿌려줄 정보만 따로 저장
-        setSavedGameInfo({
-          difficulty: data.difficulty,
-          life: data.life,
-          elapsedTime: data.accumulatedSeconds || data.elapsedTime || 0,
-        });
-      } else {
-        setHasSavedGame(false);
-        setSavedGameInfo(null); // 데이터 없으면 초기화
-      }
-    } catch (error) {
-      console.error("이어하기 체크 중 에러:", error);
+      const data = await gameService.checkRecentGame(token ? null : savedId);
+      setHasSavedGame(true);
+      setSavedGameInfo({
+        difficulty: data.difficulty,
+        life: data.life,
+        elapsedTime: data.accumulatedSeconds || data.elapsedTime || 0,
+      });
+    } catch (e) {
       setHasSavedGame(false);
-      setSavedGameInfo(null);
     }
-  }, []);
+  }, [token]);
 
+  // 🎯 저장 및 로그아웃
   const saveAndExit = async () => {
     if (!game) return;
-
-    const token = localStorage.getItem("accessToken");
-    const savedId = localStorage.getItem("sudoku_game_id");
-    const url = token
-      ? `${API_BASE_URL}/games/save`
-      : `${API_BASE_URL}/games/${savedId}/save`;
-
     try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token && { Authorization: `Bearer ${token}` }),
-        },
-        body: JSON.stringify({ elapsedTime: seconds }),
-      });
-
-      if (res.ok) {
-        // 🎯 1. 서버가 보내준 따끈따끈한 최신 데이터를 파싱합니다.
-        const data = await res.json();
-        console.log("서버 저장 및 최신 데이터 수신 완료:", data);
-
-        // 🎯 2. 메뉴로 가기 전에 정보를 즉시 최신화합니다.
-        setSavedGameInfo({
-          difficulty: data.difficulty,
-          life: data.life,
-          elapsedTime: data.elapsedTime || data.accumulatedSeconds,
-        });
-        setHasSavedGame(true);
-
-        // 🎯 3. 마지막으로 UI를 전환합니다.
-        setGame(null);
-        setViewMode("menu");
-      } else {
-        alert("저장에 실패했습니다.");
-      }
-    } catch (error) {
-      console.error("저장 중 네트워크 에러:", error);
+      const data = await gameService.saveAndExit(game.gameId, seconds, !token);
+      setGame(null);
+      setViewMode("menu");
+      checkRecentGame();
+    } catch (e) {
+      alert("저장 실패");
     }
+  };
+
+  const handleLogout = () => {
+    localStorage.clear();
+    setToken(null);
+    setGame(null);
+    setViewMode("menu");
   };
 
   useEffect(() => {
@@ -301,90 +210,46 @@ function App() {
     }
   }, [viewMode, game === null, token]); // 👈 token 상태 변화도 감시 목록에 추가
 
-  // 1. 메모 토글 함수 (깊은 복사 적용)
-  const toggleNote = useCallback(
-    async (row, col, value) => {
-      if (!game || value === 0) return;
-
-      // 1. (선택사항) 낙관적 업데이트: 서버 응답 전 UI를 먼저 바꿈 (속도감 up)
-      // 기존 toggleNote 로직을 여기에 넣어도 되지만, 일단 서버 응답 동기화를 우선합니다.
-
-      const token = localStorage.getItem("accessToken");
-      try {
-        const res = await fetch(`${API_BASE_URL}/games/${game.gameId}/memo`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token && { Authorization: `Bearer ${token}` }),
-          },
-          body: JSON.stringify({ row, col, value }),
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          // 백엔드에서 준 CellRedisDto[][] (board 필드) 가공
-          const serverBoard = data.board;
-
-          setGame((prev) => ({
-            ...prev,
-            // 서버의 최신 숫자판(v)과 메모판(m)을 상태에 반영
-            board: serverBoard.map((r) => r.map((c) => c.v)),
-            notes: serverBoard.map((r) => r.map((c) => Array.from(c.m || []))),
-          }));
-        }
-      } catch (error) {
-        console.error("메모 저장 실패:", error);
-      }
-    },
-    [game],
-  ); // token은 localStorage에서 직접 가져오므로 game만 의존성 추가
-
-  const toggleNoteMode = useCallback(() => {
-    setIsNoteMode((prev) => !prev);
-  }, []);
-
-  // 2. 숫자 입력: POST /games/{id}/place
+  // 🎯 숫자 입력 및 메모 (Axios 사용으로 401 자동 해결)
   const placeNumber = useCallback(
     async (row, col, value) => {
       if (!game || isPlacing) return;
-      const token = localStorage.getItem("accessToken");
       setIsPlacing(true);
-      setStatusMessage("숫자 입력 중...");
-
       try {
-        const res = await fetch(`${API_BASE_URL}/games/${game.gameId}/place`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token && { Authorization: `Bearer ${token}` }),
-          },
-          body: JSON.stringify({ row, col, value, elapsedTime: seconds }),
-        });
-        const data = await res.json();
-
-        // 서버가 준 CellRedisDto[][] 가공 (v: 값, m: 메모)
-        const serverBoard = data.board;
-        const newBoard = serverBoard.map((r) => r.map((c) => c.v));
-        const newNotes = serverBoard.map((r) =>
-          r.map((c) => Array.from(c.m || [])),
+        const data = await gameService.placeNumber(
+          game.gameId,
+          row,
+          col,
+          value,
+          seconds,
         );
-
-        setGame((prev) => ({
-          ...prev,
-          board: newBoard,
-          notes: newNotes, // 메모 동기화 핵심
-          status: data.status,
-          life: data.life,
-        }));
-        setStatusMessage(`${data.status} (life: ${data.life})`);
-      } catch (error) {
-        setStatusMessage("에러: " + error.message);
+        setGame(processServerData(data));
+        setStatusMessage(`${data.status} (Life: ${data.life})`);
+      } catch (e) {
+        setStatusMessage("입력 에러");
       } finally {
         setIsPlacing(false);
       }
     },
-    [game, seconds, isPlacing],
+    [game, seconds, isPlacing, processServerData],
   );
+
+  const toggleNote = useCallback(
+    async (row, col, value) => {
+      if (!game || value === 0) return;
+      try {
+        const data = await gameService.toggleMemo(game.gameId, row, col, value);
+        setGame(processServerData(data));
+      } catch (e) {
+        console.error("메모 저장 실패");
+      }
+    },
+    [game, processServerData],
+  );
+
+  const toggleNoteMode = useCallback(() => {
+    setIsNoteMode((prev) => !prev);
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -469,73 +334,18 @@ function App() {
     };
   }, [game, viewMode]); // <--- game이나 viewMode가 바뀔 때마다 타이머를 재설정함
 
-  // 게임 시작
-  const startGame = async () => {
-    setStatusMessage("게임 생성 중...");
-
-    // 1. 저장된 데이터 가져오기
+  // 🎯 게임 시작/이어하기 핸들러
+  const startGame = async (difficulty) => {
     const savedId = localStorage.getItem("sudoku_game_id");
-    const token = localStorage.getItem("accessToken");
-
-    // 🎯 방어 로직: savedId가 문자열 "undefined"거나 null이면 빈 값을 줍니다.
-    const validId = savedId && savedId !== "undefined" ? savedId : "";
-
-    // 2. URL 결정 (기존 ID가 있으면 경로에 추가)
-    const url = validId
-      ? `${API_BASE_URL}/games/start/${validId}`
-      : `${API_BASE_URL}/games/start`;
     try {
-      const res = await fetch(url, {
-        method: "POST", // 👈 반드시 POST여야 405 에러가 안 납니다!
-        headers: {
-          "Content-Type": "application/json",
-          ...(token && { Authorization: `Bearer ${token}` }),
-        },
-        body: JSON.stringify({ difficulty }),
-      });
-      const data = await res.json();
-
+      const data = await gameService.startGame(difficulty, savedId);
       localStorage.setItem("sudoku_game_id", data.gameId);
-
-      const serverBoard = data.board;
-      const newBoard = serverBoard.map((r) => r.map((c) => c.v));
-      // 시작 시점에는 m이 비어있겠지만, 구조를 일관되게 가져갑니다.
-      const newNotes = serverBoard.map((r) =>
-        r.map((c) => Array.from(c.m || [])),
-      );
-
+      setGame(processServerData(data));
       setSeconds(0);
-      setGame({
-        ...data,
-        id: data.gameId,
-        board: newBoard,
-        notes: newNotes,
-        life: data.life ?? 3,
-        difficulty,
-      });
-
       setViewMode("game");
-      setStatusMessage(data.status);
-    } catch (error) {
-      setStatusMessage("에러: " + error.message);
+    } catch (e) {
+      setStatusMessage("시작 실패");
     }
-  };
-
-  const handleLogout = () => {
-    // 1. 저장소 청소
-    localStorage.removeItem("accessToken");
-    localStorage.removeItem("refreshToken");
-    localStorage.removeItem("sudoku_game_id"); // 익명 정보도 같이 삭제 권장
-
-    // 2. 리액트 상태 초기화 (이게 바뀌어야 UI가 반응함)
-    setToken(null);
-    setUser(null);
-    setHasSavedGame(false);
-    setSavedGameInfo(null);
-
-    // 3. 화면 이동
-    setViewMode("menu");
-    setStatusMessage("로그아웃 되었습니다.");
   };
 
   return (

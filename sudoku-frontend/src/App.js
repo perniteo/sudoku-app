@@ -8,7 +8,7 @@ import GameInfo from "./components/GameInfo";
 import NumberPad from "./components/NumberPad";
 import RecordOverlay from "./components/RecordOverlay";
 import api from "./api.js"; // Axios 인스턴스
-import gameService from "./services/gameService";
+import GameService from "./services/GameService";
 
 function App() {
   const [game, setGame] = useState(null);
@@ -120,7 +120,7 @@ function App() {
   const continueGame = async () => {
     const savedId = localStorage.getItem("sudoku_game_id");
     try {
-      const data = await gameService.checkRecentGame(token ? null : savedId);
+      const data = await GameService.checkRecentGame(token ? null : savedId);
       setGame(processServerData(data));
       setSeconds(data.elapsedTime || data.accumulatedSeconds || 0);
       setViewMode("game");
@@ -138,37 +138,12 @@ function App() {
     setViewMode("menu");
   };
 
-  // 메모 저장 함수 (게임 상태가 바뀔 때마다 호출, placeNumber에서도 호출)
-  const saveNoteToServer = useCallback(
-    async (row, col, value) => {
-      if (!game) return;
-      const token = localStorage.getItem("accessToken");
-
-      try {
-        // 백엔드에 메모 업데이트 API가 있다고 가정 (없다면 컨트롤러에 추가 필요)
-        await fetch(`${API_BASE_URL}/games/${game.gameId}/memo`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token && { Authorization: `Bearer ${token}` }),
-          },
-          body: JSON.stringify({ row, col, value }),
-        });
-      } catch (error) {
-        console.error("메모 저장 실패:", error);
-      }
-    },
-    [game],
-  );
-
-  // 이어하기 데이터가 있는지 서버에 확인
-
   // 🎯 이어하기 체크 (메뉴 진입 시)
   const checkRecentGame = useCallback(async () => {
     const savedId = localStorage.getItem("sudoku_game_id");
     if (!token && !savedId) return setHasSavedGame(false);
     try {
-      const data = await gameService.checkRecentGame(token ? null : savedId);
+      const data = await GameService.checkRecentGame(token ? null : savedId);
       setHasSavedGame(true);
       setSavedGameInfo({
         difficulty: data.difficulty,
@@ -184,7 +159,7 @@ function App() {
   const saveAndExit = async () => {
     if (!game) return;
     try {
-      const data = await gameService.saveAndExit(game.gameId, seconds, !token);
+      const data = await GameService.saveAndExit(game.gameId, seconds, !token);
       setGame(null);
       setViewMode("menu");
       checkRecentGame();
@@ -216,7 +191,7 @@ function App() {
       if (!game || isPlacing) return;
       setIsPlacing(true);
       try {
-        const data = await gameService.placeNumber(
+        const data = await GameService.placeNumber(
           game.gameId,
           row,
           col,
@@ -238,7 +213,7 @@ function App() {
     async (row, col, value) => {
       if (!game || value === 0) return;
       try {
-        const data = await gameService.toggleMemo(game.gameId, row, col, value);
+        const data = await GameService.toggleMemo(game.gameId, row, col, value);
         setGame(processServerData(data));
       } catch (e) {
         console.error("메모 저장 실패");
@@ -338,7 +313,7 @@ function App() {
   const startGame = async (difficulty) => {
     const savedId = localStorage.getItem("sudoku_game_id");
     try {
-      const data = await gameService.startGame(difficulty, savedId);
+      const data = await GameService.startGame(difficulty, savedId);
       localStorage.setItem("sudoku_game_id", data.gameId);
       setGame(processServerData(data));
       setSeconds(0);

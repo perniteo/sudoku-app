@@ -1,0 +1,63 @@
+spring:
+  # --- Postgres (SQL) 설정 ---
+  datasource:
+    # 환경변수 DB_URL이 있으면 쓰고, 없으면 Neon 주소 사용
+    url: "${DB_URL:jdbc:postgresql://ep-bold-snow-a1ae7w67-pooler.ap-southeast-1.aws.neon.tech/sudoku?sslmode=require}"
+    username: "${DB_USERNAME:neondb_owner}"
+    password: "${DB_PASSWORD:npg_3J4fYSghRoHt}"
+    driver-class-name: org.postgresql.Driver
+
+  jpa: # JPA 전용 설정
+    hibernate:
+      ddl-auto: none # 엔티티 수정 시 테이블 자동 반영 (개발 단계) -> Flyway 관리로 변경(none)
+    show-sql: true     # 콘솔에 SQL 로그 출력
+    properties:
+      hibernate:
+        format_sql: true
+
+  flyway:
+    enabled: true
+    # 기존에 Neon에 수동으로 만든 테이블이 있다면 아래 옵션이 중요함
+    baseline-on-migrate: true
+    baseline-version: 0       # 👈 기준 버전을 0으로 설정
+    # SQL 파일 위치 (기본값임)
+    locations: classpath:db/migration
+
+  # --- Redis 설정 ---
+  data:
+    redis:
+      # 도커 네트워크나 서버 환경에서는 REDIS_HOST를 주입받아 사용
+      host: "${REDIS_HOST:localhost}"
+      port: ${REDIS_PORT:6379}
+      password: "${REDIS_PASSWORD:}"
+      ssl:
+        enabled: false
+
+#DB_URL="jdbc:postgresql://ep-bold-snow-a1ae7w67-pooler.ap-southeast-1.aws.neon.tech/sudoku?sslmode=require"
+#DB_USERNAME="neondb_owner"
+#DB_PASSWORD="npg_3J4fYSghRoHt"
+#JWT_SECRET="XPfmKkuX0bYR1ap3mNJstwjhzLshL7wCntxNob77erYHKRiY8VBXZXDAaLXeAq1B"
+#REDIS_HOST="new-jaybird-19879.upstash.io"
+#REDIS_PASSWORD="AU2nAAIncDJkMzY1MTA0Njc2YWM0ZDdkYjkzN2E3YzQyMTFhYjI5NnAyMTk4Nzk"
+#REDIS_PORT="6379"
+
+
+mybatis:
+  mapper-locations: classpath:mappers/*.xml
+  type-aliases-package: io.github.perniteo.sudoku.dto
+  configuration:
+    map-underscore-to-camel-case: true
+
+logging:
+  level:
+    org.springframework.security: DEBUG
+
+jwt:
+  # openssl rand -base64 48
+  secret: ${JWT_SECRET:XPfmKkuX0bYR1ap3mNJstwjhzLshL7wCntxNob77erYHKRiY8VBXZXDAaLXeAq1B}
+  expiration-time: 3600000 # 1시간 Access
+
+#SPRING_DATA_REDIS_LETTUCE_POOL_MAX_ACTIVE=8
+#SPRING_DATA_REDIS_LETTUCE_POOL_MAX_IDLE=8
+#SPRING_DATA_REDIS_LETTUCE_POOL_MIN_IDLE=2
+#SPRING_DATA_REDIS_LETTUCE_POOL_MAX_WAIT=2000ms

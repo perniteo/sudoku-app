@@ -1,7 +1,10 @@
 import axios from "axios";
 
+// 🎯 환경변수를 읽어오고, 없으면 기본값으로 로컬 주소를 설정함
+const baseURL = process.env.REACT_APP_API_URL || "http://localhost:8080";
+
 const api = axios.create({
-  baseURL: "https://sudoku-app-production-fc40.up.railway.app",
+  baseURL: baseURL,
 });
 
 api.interceptors.request.use((config) => {
@@ -23,10 +26,9 @@ api.interceptors.response.use(
         const rfToken = localStorage.getItem("refreshToken");
 
         // 🎯 [수정됨] 서버의 'reissue' 전용 주소로 정확히 요청을 보냅니다.
-        const res = await axios.post(
-          "https://sudoku-app-production-fc40.up.railway.app/api/auth/reissue",
-          { refreshToken: rfToken },
-        );
+        const res = await axios.post(`${baseURL}/api/auth/reissue`, {
+          refreshToken: rfToken,
+        });
 
         // 새 토큰들 꺼내기
         const { accessToken, refreshToken } = res.data;

@@ -36,11 +36,16 @@ public class RedisConfig {
     poolConfig.setMaxIdle(10);
     poolConfig.setMinIdle(5); // 최소 5개는 항상 연결 유지 (0.1초 컷의 핵심)
 
-    // 🎯 2. Lettuce 전용 풀 및 SSL 설정 (Upstash 필수)
-    LettucePoolingClientConfiguration clientConfig = LettucePoolingClientConfiguration.builder()
-        .poolConfig(poolConfig)
-        .useSsl() // 🔥 rediss:// 를 위한 SSL 활성화
-        .build();
+    // 🎯 2. [수정] SSL 설정 동적 제어
+    var clientConfigBuilder = LettucePoolingClientConfiguration.builder()
+        .poolConfig(poolConfig);
+
+    // 💡 호스트가 localhost가 아닐 때만 SSL을 활성화함 (Upstash 등 배포용)
+    if (!host.equals("localhost")) {
+      clientConfigBuilder.useSsl();
+    }
+
+    LettucePoolingClientConfiguration clientConfig = clientConfigBuilder.build();
 
     // 🎯 3. 서버 정보 설정 (환경 변수에서 가져옴)
     RedisStandaloneConfiguration serverConfig = new RedisStandaloneConfiguration(host, port);

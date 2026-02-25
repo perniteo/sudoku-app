@@ -1,37 +1,32 @@
 import api from "../api";
 
 export const GameService = {
-  // 새 게임 시작
-  startGame: async (difficulty, validId) => {
+  // 새 게임 시작 (ID 존재 여부에 따른 경로 분기 유지)
+  startGame: (difficulty, validId) => {
     const url = validId ? `/games/start/${validId}` : `/games/start`;
-    const res = await api.post(url, { difficulty });
-    return res.data;
+    return api.post(url, { difficulty });
   },
-  // 이어하기 정보 체크
-  checkRecentGame: async (guestId) => {
-    const url = guestId ? `/games/${guestId}` : `/games`;
-    const res = await api.get(url);
-    return res.data;
+
+  // 이어하기 체크 (로그인/비로그인 URL 분기 유지)
+  checkRecentGame: (token, savedId) => {
+    const url = token ? `/games` : `/games/${savedId}`;
+    return api.get(url);
   },
-  // 숫자 입력 및 메모 토글
-  placeNumber: async (gameId, row, col, value, elapsedTime) => {
-    const res = await api.post(`/games/${gameId}/place`, {
-      row,
-      col,
-      value,
-      elapsedTime,
-    });
-    return res.data;
+
+  // 숫자 입력 (elapsedTime 포함)
+  placeNumber: (gameId, row, col, value, elapsedTime) => {
+    return api.post(`/games/${gameId}/place`, { row, col, value, elapsedTime });
   },
-  toggleMemo: async (gameId, row, col, value) => {
-    const res = await api.post(`/games/${gameId}/memo`, { row, col, value });
-    return res.data;
+
+  // 메모 토글
+  toggleMemo: (gameId, row, col, value) => {
+    return api.post(`/games/${gameId}/memo`, { row, col, value });
   },
-  // 저장 및 종료
-  saveAndExit: async (gameId, elapsedTime, isGuest) => {
-    const url = isGuest ? `/games/${gameId}/save` : `/games/save`;
-    const res = await api.post(url, { elapsedTime });
-    return res.data;
+
+  // 저장 (로그인 유저 /games/save, 익명 /games/{id}/save 분기)
+  saveAndExit: (gameId, elapsedTime, token) => {
+    const url = token ? `/games/save` : `/games/${gameId}/save`;
+    return api.post(url, { elapsedTime });
   },
 };
 

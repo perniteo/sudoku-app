@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 
 const MainMenu = ({
   difficulty,
@@ -8,7 +8,13 @@ const MainMenu = ({
   hasSavedGame,
   savedGameInfo, // 👈 App.js에서 추가한 상태
   formatTime, // 👈 시간 포맷 함수
+
+  // 🎯 멀티플레이용 props 추가
+  onJoinByCode, // (code) => void
+  onShowRoomList, // () => void
+  onCreateMultiRoom, // (difficulty) => void
 }) => {
+  const [roomCode, setRoomCode] = useState("");
   const canContinue = hasSavedGame && savedGameInfo;
 
   // 하트 렌더링 함수: 남은 건 빨간 하트, 깎인 건 깨진 하트
@@ -72,6 +78,39 @@ const MainMenu = ({
             <span style={styles.disabledText}>진행 중인 게임 없음</span>
           )}
         </button>
+      </div>
+
+      <div style={styles.dividerLine} />
+
+      {/* 🎯 3. 멀티플레이 섹션 (새로 추가) */}
+      <div style={styles.section}>
+        <h3 style={styles.title}>TOGETHER PLAY</h3>
+
+        {/* 방 만들기 & 목록 보기 */}
+        <div style={{ ...styles.row, marginBottom: "15px" }}>
+          <button
+            onClick={() => onCreateMultiRoom(difficulty)}
+            style={styles.multiBtn}
+          >
+            방 만들기
+          </button>
+          <button onClick={onShowRoomList} style={styles.listBtn}>
+            방 목록 보기
+          </button>
+        </div>
+
+        {/* 코드로 바로 참가 */}
+        <div style={styles.row}>
+          <input
+            placeholder="참여 코드 입력"
+            value={roomCode}
+            onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
+            style={styles.input}
+          />
+          <button onClick={() => onJoinByCode(roomCode)} style={styles.joinBtn}>
+            참가
+          </button>
+        </div>
       </div>
     </div>
   );

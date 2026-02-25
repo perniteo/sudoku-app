@@ -7,9 +7,13 @@ import MainMenu from "./components/MainMenu";
 import GameInfo from "./components/GameInfo";
 import NumberPad from "./components/NumberPad";
 import RecordOverlay from "./components/RecordOverlay";
+import RoomList from "./components/RoomList.jsx";
+import Lobby from "./components/Lobby.jsx";
 import api from "./api.js"; // 🎯 Axios 인스턴스
 import SockJS from "sockjs-client";
 import { Client, Stomp } from "@stomp/stompjs";
+import MultiGameView from "./components/MultiGameView.jsx";
+import WaitingRoom from "./components/WaitingRoom.jsx";
 
 function App() {
   const [game, setGame] = useState(null);
@@ -20,7 +24,7 @@ function App() {
   const [isNoteMode, setIsNoteMode] = useState(false);
 
   const [user, setUser] = useState(null);
-  const [viewMode, setViewMode] = useState("game");
+  const [viewMode, setViewMode] = useState("menu"); // "menu", "game", "record", "auth", "lobby", "waiting"
   const [hasSavedGame, setHasSavedGame] = useState(false);
   const [seconds, setSeconds] = useState(0);
 
@@ -47,6 +51,23 @@ function App() {
 
   const [rooms, setRooms] = useState([]); // 🎯 방 목록 저장용
 
+  const leaveRoom = useCallback(() => {
+    // 1. 소켓 연결 해제 (무전기 끄기)
+    if (stompClientRef.current) {
+      stompClientRef.current.deactivate();
+      stompClientRef.current = null;
+    }
+
+    // 2. 방 정보 초기화 및 채팅 내역 삭제
+    setRoomInfo(null);
+    setChatMessages([]);
+
+    // 3. 메인 메뉴로 이동
+    setViewMode("menu");
+
+    console.log("🏃 방에서 나갔습니다.");
+  }, []);
+
   // 🎯 방 목록 가져오기 함수 (onShowRoomList에 연결될 놈)
   const fetchRoomList = async () => {
     try {
@@ -64,37 +85,84 @@ function App() {
 
   const connectMultiplayer = useCallback(
     (gameId) => {
+      if (!gameId) return;
+
+      // 🎯 1. [중복 방지] 이미 연결된 소켓이 '진짜로' 살아있다면 새로 연결 안 함
+      if (stompClientRef.current?.connected) {
+        console.log("✅ 이미 연결된 소켓이 유효합니다.");
+        return;
+      }
+
+      // 🎯 2. [클린업] 기존 객체가 있다면 확실히 끄고 시작
+      if (stompClientRef.current) {
+        try {
+          stompClientRef.current.disconnect();
+        } catch (e) {}
+      }
+
+      // 🎯 SockJS와 StompJS 호환성을 위해 Stomp.over(socket) 방식 사용
       const socket = new SockJS(`${API_BASE_URL}/ws-stomp?gameId=${gameId}`);
       const client = Stomp.over(socket);
 
-      client.connect({}, () => {
-        console.log("✅ 멀티플레이 연결 성공");
+      // 로그 너무 많으면 주석 처리해
+      // client.debug = (str) => console.log("🚀 STOMP:", str);
 
-        // 1. 게임 데이터 구독 (숫자 입력 등)
-        client.subscribe(`/topic/game/${gameId}`, (msg) => {
-          const data = JSON.parse(msg.body);
-          setGame((prev) => ({
-            ...prev,
-            board: data.board.map((r) => r.map((c) => c.v)),
-            notes: data.board.map((r) => r.map((c) => Array.from(c.m || []))),
-            status: data.status,
-            life: data.life,
-          }));
-          if (data.elapsedTime) setSeconds(data.elapsedTime);
-        });
+      client.connect(
+        {},
+        () => {
+          console.log("✅ 멀티플레이 연결 성공 (ID: " + gameId + ")");
+          // 🎯 3. [핵심] 연결 성공 직후에만 Ref에 저장 (이게 Guest 연결 유지의 핵심)
+          stompClientRef.current = client;
 
-        // 2. 채팅 구독 (대기실/인게임 공용)
-        client.subscribe(`/topic/game/${gameId}/chat`, (msg) => {
-          const chat = JSON.parse(msg.body);
-          setChatMessages((prev) => [...prev, chat]);
-        });
+          // 1. 게임판 데이터 구독 (숫자 입력 등)
+          client.subscribe(`/topic/game/${gameId}`, (msg) => {
+            const data = JSON.parse(msg.body);
+            console.log("📢 게임 데이터 수신:", data);
 
-        // 3. 설정 변경 구독 (방장이 난이도 바꿀 때)
-        client.subscribe(`/topic/game/${gameId}/settings`, (msg) => {
-          const settings = JSON.parse(msg.body);
-          setRoomInfo((prev) => ({ ...prev, difficulty: settings.difficulty }));
-        });
-      });
+            // 🎯 서버 응답에 따라 보드판 전체 교체
+            setGame((prev) => ({
+              ...prev,
+              board: data.board.map((r) => r.map((c) => c.v)),
+              notes: data.board.map((r) => r.map((c) => Array.from(c.m || []))),
+              status: data.status,
+              life: data.life || 3,
+            }));
+            if (data.elapsedTime !== undefined) setSeconds(data.elapsedTime);
+
+            // 🎯 만약 상태가 'PLAYING'으로 오면 대기실에서 게임판으로 화면 전환!
+            if (data.status === "PLAYING") setViewMode("game");
+          });
+
+          // 2. 채팅 구독
+          client.subscribe(`/topic/game/${gameId}/chat`, (msg) => {
+            const chat = JSON.parse(msg.body);
+            console.log("💬 채팅 도착:", chat);
+
+            // 🎯 [핵심] 함수형 업데이트를 써야 최신 배열에 정확히 추가됨!
+            setChatMessages((prevMessages) => {
+              // 중복 메시지 방지 (동일 ID나 내용 체크 로직 넣으면 더 좋음)
+              return [...prevMessages, chat];
+            });
+          });
+
+          // 3. 설정(난이도) 변경 구독
+          client.subscribe(`/topic/game/${gameId}/settings`, (msg) => {
+            const settings = JSON.parse(msg.body);
+            setRoomInfo((prev) => ({
+              ...prev,
+              difficulty: settings.difficulty,
+            }));
+          });
+
+          // 4. 에러 구독 (추가해두면 좋음)
+          client.subscribe(`/topic/game/${gameId}/errors`, (msg) => {
+            alert("❌ 에러: " + JSON.parse(msg.body).message);
+          });
+        },
+        (error) => {
+          console.error("❌ STOMP 연결 에러:", error);
+        },
+      );
 
       stompClientRef.current = client;
     },
@@ -103,20 +171,30 @@ function App() {
 
   const handleCreateMultiRoom = async (selectedDifficulty) => {
     try {
-      // 1. 서버에 방 생성 요청
+      // 🎯 1. 서버에 방 생성 요청 (응답이 올 때까지 기다림)
       const res = await api.post(
         `/rooms/create?difficulty=${selectedDifficulty}`,
       );
-      const { roomCode, gameId } = res.data;
 
-      // 2. 방 정보 저장 및 대기실로 이동
-      setRoomInfo({ roomCode, gameId, isHost: true });
+      // 🎯 2. 응답 데이터에서 정확한 gameId 추출
+      const { roomCode, gameId } = res.data;
+      console.log("✅ 방 생성 완료! gameId:", gameId);
+
+      // 🎯 3. 상태 업데이트 (화면 전환 준비)
+      setRoomInfo({
+        roomCode,
+        gameId,
+        isHost: true,
+        difficulty: selectedDifficulty,
+      });
       setViewMode("waiting");
 
-      // 3. 소켓 연결 및 구독 시작 (아까 만든 connectMulti 활용)
-      const client = connectMulti(gameId);
+      // 🎯 4. [핵심] 추출한 gameId를 "직접" 넘겨서 소켓 연결
+      // (상태값인 gameId는 비동기라 아직 null일 수 있으니 res.data에서 꺼낸 걸 바로 씀)
+      const client = connectMultiplayer(gameId);
       setStompClient(client);
     } catch (error) {
+      console.error("방 생성 에러:", error);
       alert("방 생성 실패: " + error.message);
     }
   };
@@ -139,7 +217,7 @@ function App() {
       setViewMode("waiting");
 
       // 🎯 3. 무전기 채널 맞추기 (소켓 연결)
-      const client = connectMulti(gameId); // 기존 함수 재사용
+      const client = connectMultiplayer(gameId); // 기존 함수 재사용
       setStompClient(client);
 
       // (선택) 채팅방에 "XX님이 입장했습니다" 알림 쏘는 로직 추가 가능
@@ -148,72 +226,46 @@ function App() {
     }
   };
 
+  // 🎯 채팅 전송 함수
   const sendChat = (content) => {
-    if (!stompClientRef.current?.connected) return;
-    stompClientRef.current.send(
-      `/multi/game/${roomInfo.gameId}/chat`,
-      {},
-      JSON.stringify({ sender: "나", content }),
-    ); // 닉네임 로직 나중에 추가
+    if (!stompClientRef.current?.connected) {
+      console.warn("⚠️ 채팅 연결 안 됨");
+      return;
+    }
+
+    stompClientRef.current.publish({
+      destination: `/multi/game/${roomInfo.gameId}/chat`,
+      body: JSON.stringify({
+        sender: token ? "나" : "익명",
+        content: content,
+      }),
+    });
   };
 
+  // 🎯 난이도 변경 함수
   const updateDifficulty = (newDiff) => {
-    if (!roomInfo.isHost) return;
-    stompClientRef.current.send(
-      `/multi/game/${roomInfo.gameId}/settings`,
-      {},
-      JSON.stringify({ difficulty: newDiff }),
-    );
-  };
+    // 1. 방장이 아니면 리턴
+    if (!roomInfo?.isHost) return;
 
-  // 🎯 멀티플레이 방 진입 시 호출 (예: joinRoom 성공 후)
-  const setupMultiplayer = (gameId) => {
-    const client = connectMulti(gameId); // 네가 이미 가지고 있는 그 함수!
-    setStompClient(client);
-  };
+    // 2. 소켓 연결 확인 (NPE 방어)
+    if (!stompClientRef.current || !stompClientRef.current.connected) {
+      console.warn("⚠️ 소켓이 아직 연결되지 않았습니다.");
+      return;
+    }
 
-  const connectMulti = (gameId) => {
-    // 1. 서버의 /ws-stomp 엔드포인트로 소켓 생성
-    const socket = new SockJS(`${API_BASE_URL}/ws-stomp`);
+    // 3. 데이터 전송 (StompJS v7이면 publish, 구버전이면 send)
+    const client = stompClientRef.current;
+    const destination = `/multi/game/${roomInfo.gameId}/settings`;
 
-    const client = new Client({
-      webSocketFactory: () => socket,
-      debug: (str) => console.log("🚀 STOMP Debug:", str),
-      reconnectDelay: 5000, // 연결 끊기면 5초 뒤 재시도
-      onConnect: () => {
-        console.log("✅ 웹소켓 연결 성공!");
-
-        // 🎯 [구독] 이 방의 소식을 듣겠다!
-        client.subscribe(`/topic/game/${gameId}`, (message) => {
-          const data = JSON.parse(message.body);
-          console.log("📢 서버에서 온 실시간 데이터:", data);
-          // 🎯 [핵심] 서버가 준 최신 보드로 내 화면 동기화!
-          setGame((prev) => ({
-            ...prev,
-            board: data.board.map((r) => r.map((c) => c.v)),
-            notes: data.board.map((r) => r.map((c) => Array.from(c.m || []))),
-            status: data.status,
-            life: data.life,
-          }));
-
-          // 🎯 타이머도 서버 시간으로 맞춰버리기 (동기화의 정석)
-          if (data.elapsedTime !== undefined) {
-            setSeconds(data.elapsedTime);
-          }
-        });
-
-        // 🎯 [에러 구독] 에러 채널도 따로 듣기
-        client.subscribe(`/topic/game/${gameId}/errors`, (message) => {
-          alert("에러 발생: " + JSON.parse(message.body).message);
-        });
-      },
-      onStompError: (frame) => {
-        console.error("❌ STOMP 에러:", frame.headers["message"]);
-      },
+    client.publish({
+      destination: destination,
+      body: JSON.stringify({
+        difficulty: newDiff,
+        roomCode: roomInfo.roomCode, // 🎯 서버가 Redis를 고칠 때 쓸 열쇠(Key) 전달!
+      }),
     });
 
-    client.activate(); // 연결 시작!
-    return client;
+    console.log("📤 난이도 변경 송신:", newDiff);
   };
 
   // 🎯 [발행] 숫자 입력 시 서버로 던지는 전용 함수
@@ -236,6 +288,26 @@ function App() {
     },
     [seconds],
   ); // seconds가 바뀔 때마다 갱신
+
+  // multiplayer 게임 시작 함수 (방장이 시작 버튼 누르면 호출)
+  const startMultiGame = useCallback(() => {
+    // 1. 방장이 아니거나 소켓 연결이 없으면 중단
+    if (!roomInfo?.isHost || !stompClientRef.current?.connected) {
+      alert("방장만 게임을 시작할 수 있거나, 연결이 불안정합니다.");
+      return;
+    }
+
+    console.log("🚀 멀티플레이 게임 시작 신호 발송!");
+
+    // 2. 서버의 @MessageMapping("/game/{gameId}/start") 주소로 신호 쏨
+    stompClientRef.current.publish({
+      destination: `/multi/game/${roomInfo.gameId}/start`,
+      body: JSON.stringify({
+        difficulty: roomInfo.difficulty,
+        roomCode: roomInfo.roomCode,
+      }),
+    });
+  }, [roomInfo, stompClientRef]);
 
   // 🎯 시간 포맷 함수
   const formatTime = (totalSeconds) => {
@@ -510,7 +582,7 @@ function App() {
     setStatusMessage("로그아웃 되었습니다.");
   };
 
-  // --- Effects (네 원본 그대로) ---
+  // --- Effects ---
   useEffect(() => {
     const savedId = localStorage.getItem("sudoku_game_id");
     const currentToken = localStorage.getItem("accessToken");
@@ -589,6 +661,23 @@ function App() {
     };
   }, [game?.status, viewMode]); // 👈 status가 바뀌어도 내부 if문에서 걸러짐
 
+  useEffect(() => {
+    // roomInfo가 생기면 자동으로 소켓을 연결함
+    if (roomInfo?.gameId) {
+      console.log("📡 [Effect] 소켓 연결 시도:", roomInfo.gameId);
+      connectMultiplayer(roomInfo.gameId);
+    }
+
+    // 🎯 [클린업] 방을 나가거나 컴포넌트가 죽을 때 소켓을 확실히 끔
+    return () => {
+      if (stompClientRef.current) {
+        console.log("🧹 소켓 연결 종료");
+        stompClientRef.current.deactivate();
+        stompClientRef.current = null;
+      }
+    };
+  }, [roomInfo?.gameId]); // 👈 gameId가 바뀔 때만 실행되므로 중복 실행 방지됨
+
   const testSocket = () => {
     const currentGameId = "multi:2cfdb7b2-99d8-4934-bc5c-9f4df06ce113";
     const currentRoomCode = "D1E92F";
@@ -625,12 +714,19 @@ function App() {
     );
   };
 
+  console.log("🕵️ WaitingRoom 타입 체크:", typeof WaitingRoom);
+
   // --- Render ---
   return (
-    <div style={{ padding: "20px", position: "relative" }}>
-      <h1>
-        <button onClick={testSocket}>소켓 테스트 시작</button>
-      </h1>
+    <div
+      style={{
+        padding: "20px",
+        position: "relative",
+        maxWidth: "800px",
+        margin: "0 auto",
+      }}
+    >
+      {/* 1. 상단 공통 헤더 */}
       <Header
         token={token}
         onLoginClick={() => setViewMode("SIGNIN")}
@@ -640,6 +736,8 @@ function App() {
           fetchUserStats();
         }}
       />
+
+      {/* 2. 통계 팝업 */}
       {isRecordOpen && (
         <RecordOverlay
           records={userStats.records}
@@ -649,62 +747,100 @@ function App() {
           formatTime={formatTime}
         />
       )}
-      {!game ? (
-        <MainMenu
-          difficulty={difficulty}
-          setDifficulty={setDifficulty}
-          onStart={startGame}
-          onContinue={continueGame}
-          hasSavedGame={hasSavedGame}
-          token={token}
-          savedGameInfo={savedGameInfo}
-          formatTime={formatTime}
-          onCreateMultiRoom={handleCreateMultiRoom} // 👈 handleCreateMultiRoom 함수가 정의되어 있어야 함!
-          onShowRoomList={fetchRoomList}
-          onJoinByCode={handleJoinByCode}
-        />
-      ) : (
-        <>
-          <GameInfo
-            game={game}
+
+      {/* 🎯 3. 메인 콘텐츠 영역 (ViewMode 분기) */}
+      <main style={{ marginTop: "20px" }}>
+        {/* (1) 초기 메인 메뉴 */}
+        {viewMode === "menu" && (
+          <MainMenu
+            difficulty={difficulty}
+            setDifficulty={setDifficulty}
+            onStart={startGame}
+            onContinue={continueGame}
+            hasSavedGame={hasSavedGame}
+            token={token}
+            savedGameInfo={savedGameInfo}
             formatTime={formatTime}
-            seconds={seconds}
-            isNoteMode={isNoteMode}
-            onToggleNote={() => setIsNoteMode(!isNoteMode)}
-            onPause={() => setViewMode("pause")}
+            onCreateMultiRoom={handleCreateMultiRoom}
+            onShowRoomList={fetchRoomList}
+            onJoinByCode={handleJoinByCode}
           />
-          <div style={{ position: "relative", display: "inline-block" }}>
-            <SudokuBoard
-              board={game.board}
-              notes={game.notes}
-              selectedCell={selectedCell}
-              onSelectCell={setSelectedCell}
-            />
-            <GameOverlay
+        )}
+
+        {/* (2) 멀티플레이 방 목록 (Lobby) */}
+        {viewMode === "lobby" && (
+          <RoomList
+            rooms={rooms}
+            onJoin={handleJoinByCode}
+            onBack={() => setViewMode("menu")}
+          />
+        )}
+
+        {/* (3) 멀티플레이 대기실 (Waiting Room) */}
+        {viewMode === "waiting" && roomInfo && (
+          <WaitingRoom
+            roomInfo={roomInfo}
+            chatMessages={chatMessages}
+            onSendMessage={sendChat}
+            onUpdateDifficulty={updateDifficulty}
+            onCancel={leaveRoom} // 방 나갈 때 소켓 해제 및 메뉴 이동 로직 필요
+            onStartGame={startMultiGame} // 방장이 게임 시작 버튼 누르면 호출되는 함수
+            isHost={roomInfo.isHost}
+          />
+        )}
+
+        {/* (4) 실제 게임 플레이 (싱글/멀티 공용) */}
+        {(viewMode === "game" || viewMode === "pause") && game && (
+          <>
+            <GameInfo
               game={game}
-              viewMode={viewMode}
-              setViewMode={setViewMode}
-              setGame={setGame}
-              setSeconds={setSeconds}
-              saveAndExit={saveAndExit}
               formatTime={formatTime}
               seconds={seconds}
-              startGame={startGame}
-              togglePause={() =>
-                setViewMode((v) => (v === "pause" ? "game" : "pause"))
-              }
+              isNoteMode={isNoteMode}
+              onToggleNote={() => setIsNoteMode(!isNoteMode)}
+              onPause={() => setViewMode("pause")}
             />
-          </div>
-          <NumberPad
-            viewMode={viewMode}
-            isNoteMode={isNoteMode}
-            onInput={isNoteMode ? toggleNote : placeNumber}
-            onErase={() => placeNumber(selectedCell.row, selectedCell.col, 0)}
-            selectedCell={selectedCell}
-            isPlacing={isPlacing}
-          />
-        </>
-      )}
+            <div
+              style={{
+                position: "relative",
+                display: "inline-block",
+                marginTop: "20px",
+              }}
+            >
+              <SudokuBoard
+                board={game.board}
+                notes={game.notes}
+                selectedCell={selectedCell}
+                onSelectCell={setSelectedCell}
+              />
+              <GameOverlay
+                game={game}
+                viewMode={viewMode}
+                setViewMode={setViewMode}
+                setGame={setGame}
+                setSeconds={setSeconds}
+                saveAndExit={saveAndExit}
+                formatTime={formatTime}
+                seconds={seconds}
+                startGame={startGame}
+                togglePause={() =>
+                  setViewMode((v) => (v === "pause" ? "game" : "pause"))
+                }
+              />
+            </div>
+            <NumberPad
+              viewMode={viewMode}
+              isNoteMode={isNoteMode}
+              onInput={isNoteMode ? toggleNote : placeNumber}
+              onErase={() => placeNumber(selectedCell.row, selectedCell.col, 0)}
+              selectedCell={selectedCell}
+              isPlacing={isPlacing}
+            />
+          </>
+        )}
+      </main>
+
+      {/* 4. 인증 모달 (항상 최상단) */}
       <AuthModal
         show={viewMode === "SIGNIN"}
         isLoginView={isLoginView}
@@ -713,15 +849,6 @@ function App() {
         setViewMode={setViewMode}
         onLoginSubmit={onLoginSubmit}
       />
-
-      {viewMode === "lobby" && (
-        <RoomList
-          rooms={rooms}
-          onJoin={handleJoinByCode} // 🎯 목록에서 클릭하면 코드로 참가 로직 실행
-          onBack={() => setViewMode("menu")} // 다시 메인으로
-        />
-      )}
-      <p style={{ marginTop: "20px" }}>{statusMessage}</p>
     </div>
   );
 }

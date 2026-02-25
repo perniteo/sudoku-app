@@ -1,9 +1,13 @@
 package io.github.perniteo.sudoku.controller;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import io.github.perniteo.common.exception.BaseException;
 import io.github.perniteo.sudoku.controller.dto.ChatRequest;
+import io.github.perniteo.sudoku.controller.dto.GameStartResponse;
 import io.github.perniteo.sudoku.controller.dto.PlaceRequest;
 import io.github.perniteo.sudoku.controller.dto.PlaceResponse;
+import io.github.perniteo.sudoku.domain.SudokuGame;
+import io.github.perniteo.sudoku.service.RoomService;
 import io.github.perniteo.sudoku.service.SudokuGameService;
 import java.util.HashMap;
 import java.util.Map;
@@ -11,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageExceptionHandler;
 import org.springframework.messaging.handler.annotation.MessageMapping;
+import org.springframework.messaging.handler.annotation.SendTo;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
 
@@ -20,6 +25,7 @@ public class GameMessageController {
 
   private final SudokuGameService gameService;
   private final SimpMessagingTemplate messagingTemplate;
+  private final RoomService roomService;
 
   @MessageExceptionHandler(BaseException.class)
   public void handleBaseException(BaseException e, @DestinationVariable String gameId) {
@@ -45,9 +51,54 @@ public class GameMessageController {
 
   // [실시간 채팅] /multi/game/{gameId}/chat
   @MessageMapping("/game/{gameId}/chat")
+  @SendTo("/topic/game/{gameId}/chat")    // 👈 서버가 구독자들에게 뿌려주는 주소
   public void handleChat(@DestinationVariable String gameId, ChatRequest chat) {
     // 채팅은 DB나 Redis에 저장할 필요가 없다면 바로 쏴줍니다 (Stateless)
     // 만약 저장하고 싶다면 ChatService를 여기서 호출하세요.
     messagingTemplate.convertAndSend("/topic/game/" + gameId + "/chat", chat);
+  }
+
+  @MessageMapping("/game/{gameId}/settings")
+  @SendTo("/topic/game/{gameId}/settings")
+  public Map<String, Object> handleSettings(
+      @DestinationVariable String gameId,
+      Map<String, Object> settings
+  ) throws JsonProcessingException {
+
+    // 🎯 1. 프론트에서 보낸 새 난이도 추출
+    int newDifficulty = (int) settings.get("difficulty");
+    String roomCode = (String) settings.get("roomCode"); // 프론트에서 같이 보내줘야 함
+
+    // 🎯 2. Redis에 저장된 방 정보(JSON) 업데이트
+    if (roomCode != null) {
+      roomService.updateRoomDifficulty(roomCode, newDifficulty);
+    }
+
+    // 🎯 3. 방 안의 모든 사람에게 브로드캐스트 (실시간 UI 반영)
+    return settings;
+  }
+
+  @MessageMapping("/game/{gameId}/start")
+  @SendTo("/topic/game/{gameId}")
+  public GameStartResponse handleStartGame(
+      @DestinationVariable String gameId, Map<String, Object> payload)
+      throws JsonProcessingException {
+    System.out.println("🚨 [STOMP] 시작 요청 도착! gameId: " + gameId + ", payload: " + payload);
+    int difficulty = (int) payload.get("difficulty");
+
+    gameService.createMultiGame(gameId, difficulty);
+
+    System.out.println("🎮 게임 시작! 보드판 생성 완료: " + gameId);// 🎯 3. 저장된 게임 데이터 로드
+    SudokuGame game = gameService.getGame(gameId);
+
+    //  기존 싱글플레이 응답(GameStartResponse)과 동일한 구조로 리턴
+    // (gameId, boardSnapshots, status)
+    System.out.println("🎮 [MULTI START] " + gameId + " | Difficulty: " + difficulty);
+
+    return new GameStartResponse(
+        gameId,
+        game.getPuzzleBoard().getCellSnapshots(), // 👈 기존과 동일한 스냅샷 포맷
+        game.getStatus().name()
+    );
   }
 }

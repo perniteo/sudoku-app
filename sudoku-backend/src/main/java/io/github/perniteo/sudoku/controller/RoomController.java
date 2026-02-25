@@ -39,10 +39,10 @@ public class RoomController {
 
   // 🎯 2. 참여 코드로 방 정보 조회 (Guest)
   @GetMapping("/join/{code}")
-  public ResponseEntity<?> joinRoom(@PathVariable String code) {
+  public ResponseEntity<Map<String, Object>> joinRoom(@PathVariable String code) {
     try {
-      String gameId = roomService.joinRoomByCode(code);
-      return ResponseEntity.ok(Map.of("gameId", gameId));
+      Map<String, Object> data = roomService.joinRoomByCode(code);
+      return ResponseEntity.ok(data);
     } catch (IllegalArgumentException e) {
       return ResponseEntity.notFound().build();
     }
@@ -55,4 +55,6 @@ public class RoomController {
     List<Map<String, Object>> rooms = roomService.getFilteredRooms(difficulty);
     return ResponseEntity.ok(rooms);
   }
+
+
 }

@@ -1,6 +1,8 @@
 package io.github.perniteo.common.config;
 
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.Map;
+import java.util.UUID;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
@@ -27,13 +29,20 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
           public boolean beforeHandshake(ServerHttpRequest request, ServerHttpResponse response,
               WebSocketHandler wsHandler, Map<String, Object> attributes) throws Exception {
             if (request instanceof ServletServerHttpRequest) {
-              ServletServerHttpRequest servletRequest = (ServletServerHttpRequest) request;
-              // 🎯 URL 쿼리 파라미터에서 gameId와 roomCode를 추출해서 세션 속성에 저장
-              String gameId = servletRequest.getServletRequest().getParameter("gameId");
-              String roomCode = servletRequest.getServletRequest().getParameter("roomCode");
+              HttpServletRequest servletRequest = ((ServletServerHttpRequest) request).getServletRequest();
 
-              attributes.put("gameId", gameId);
-              attributes.put("roomCode", roomCode);
+              // 🎯 직접 찍어보기
+              String gameId = servletRequest.getParameter("gameId");
+              System.out.println("🚀 [DEBUG] Received gameId: " + gameId);
+              // 👆 여기서 null이 찍히면 프론트가 안 보낸 거임!
+
+              // 🎯 NPE 방어 로직 (null이면 저장 안 함)
+              if (gameId != null && !gameId.trim().isEmpty()) {
+                attributes.put("gameId", gameId);
+              } else {
+                // 임시로 랜덤 ID라도 넣어보고 터지는지 확인
+                attributes.put("gameId", "UNKNOWN_" + UUID.randomUUID());
+              }
             }
             return true;
           }

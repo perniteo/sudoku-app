@@ -66,23 +66,28 @@ public class RoomService {
     return rooms;
   }
 
-  public String joinRoomByCode(String code) {
-    // JSON 문자열을 가져옴
+  public Map<String, Object> joinRoomByCode(String code) {
     String json = redisTemplate.opsForValue().get(ROOM_CODE_PREFIX + code.toUpperCase());
     if (json == null) throw new RuntimeException("존재하지 않는 방 코드입니다.");
 
     try {
-      // JSON에서 gameId 추출
+      // 🎯 JSON 전체를 Map으로 파싱 (gameId, difficulty 다 들어있음)
       Map<String, Object> data = objectMapper.readValue(json, Map.class);
       String gameId = (String) data.get("gameId");
 
-      // 인원 제한 로직
+      // 인원 체크 로직
       Long count = redisTemplate.opsForValue().increment(ROOM_USER_COUNT + gameId);
       if (count != null && count > 2) {
         redisTemplate.opsForValue().decrement(ROOM_USER_COUNT + gameId);
         throw new RuntimeException("방이 가득 찼습니다.");
       }
-      return gameId;
+
+      // 🎯 gameId랑 difficulty 둘 다 담아서 리턴
+      Map<String, Object> result = new HashMap<>();
+      result.put("gameId", gameId);
+      result.put("difficulty", data.get("difficulty"));
+      return result;
+
     } catch (JsonProcessingException e) {
       throw new RuntimeException("방 정보 파싱 실패");
     }
@@ -126,6 +131,20 @@ public class RoomService {
         redisTemplate.delete(ROOM_CODE_PREFIX + roomCode.toUpperCase());
       }
       // 필요하다면 여기서 gameService.deleteGame(gameId) 호출해서 게임판도 삭제
+    }
+  }
+
+  public void updateRoomDifficulty(String code, int newDifficulty) throws JsonProcessingException {
+    String key = ROOM_CODE_PREFIX + code.toUpperCase();
+    String json = redisTemplate.opsForValue().get(key);
+
+    if (json != null) {
+      Map<String, Object> data = objectMapper.readValue(json, Map.class);
+      data.put("difficulty", newDifficulty); // 🎯 난이도 갱신
+
+      String updatedJson = objectMapper.writeValueAsString(data);
+      // Redis 덮어쓰기 (기존 만료시간 유지하려면 getExpire 확인 후 세팅)
+      redisTemplate.opsForValue().set(key, updatedJson, 24, TimeUnit.HOURS);
     }
   }
 }

@@ -65,6 +65,20 @@ public class SudokuGameService {
     return userId;
   }
 
+  public String createMultiGame(String gameId, int difficulty) throws JsonProcessingException {
+    // 🎯 1. 기존 데이터 정리 (혹시 모를 중복 방지)
+    gameRepository.delete(gameId);
+
+    // 🎯 2. 새 게임 보드 로드 및 생성
+    SudokuBoardData boardData = boardLoadService.loadBoard(difficulty);
+    SudokuGame game = new SudokuGame(boardData);
+
+    // 🎯 3. 저장 (키를 multi:uuid 형태로 저장)
+    gameRepository.save(gameId, game);
+
+    return gameId;
+  }
+
   @Transactional
   public PlaceResponse placeNumber(String userId, int row, int col, int value, long elapsedTime) {
     SudokuGame game = getGame(userId);

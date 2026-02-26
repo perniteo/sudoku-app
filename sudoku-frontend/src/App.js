@@ -120,13 +120,30 @@ function App() {
             console.log("📢 게임 데이터 수신:", data);
 
             // 🎯 서버 응답에 따라 보드판 전체 교체
-            setGame((prev) => ({
-              ...prev,
-              board: data.board.map((r) => r.map((c) => c.v)),
-              notes: data.board.map((r) => r.map((c) => Array.from(c.m || []))),
-              status: data.status,
-              life: data.life || 3,
-            }));
+            setGame((prev) => {
+              // 🎯 [수정] 서버에서 온 메모 데이터 가공
+              const serverNotes = data.notes
+                ? data.notes.map((r) => r.map((c) => Array.from(c.m || [])))
+                : null;
+
+              return {
+                ...prev,
+                gameId: data.gameId || gameId,
+                board: data.board.map((r) => r.map((c) => c.v)),
+                difficulty: data.difficulty || roomInfo?.difficulty,
+
+                // 🔥 [핵심 방어] 서버 데이터(serverNotes)가 있으면 쓰고,
+                // 없으면 내 기존 메모(prev?.notes)를 쓰되,
+                // 둘 다 없으면 빈 배열(9x9)을 새로 만듭니다.
+                notes:
+                  serverNotes ||
+                  prev?.notes ||
+                  Array.from({ length: 9 }, () => Array(9).fill([])),
+
+                status: data.status,
+                life: data.life || 3,
+              };
+            });
             if (data.elapsedTime !== undefined) setSeconds(data.elapsedTime);
 
             // 🎯 만약 상태가 'PLAYING'으로 오면 대기실에서 게임판으로 화면 전환!
@@ -154,7 +171,33 @@ function App() {
             }));
           });
 
-          // 4. 에러 구독 (추가해두면 좋음)
+          // 🎯 4. 실시간 메모(Notes) 구독 (휘발성 공유)
+          client.subscribe(`/topic/game/${gameId}/memo`, (msg) => {
+            const data = JSON.parse(msg.body);
+            console.log("📝 메모 도착:", data);
+
+            // 🎯 [핵심] Redis를 안 거치므로, 여기서 내 로컬 상태(setGame)를 직접 수정함
+            setGame((prev) => {
+              if (!prev || !prev.notes) return prev;
+
+              const { row, col, value } = data;
+              const newNotes = [...prev.notes];
+              newNotes[row] = [...newNotes[row]]; // 깊은 복사
+
+              // Set을 활용해 메모 토글 (이미 있으면 지우고, 없으면 추가)
+              const currentSet = new Set(newNotes[row][col]);
+              if (currentSet.has(value)) {
+                currentSet.delete(value);
+              } else {
+                currentSet.add(value);
+              }
+
+              newNotes[row][col] = Array.from(currentSet);
+              return { ...prev, notes: newNotes };
+            });
+          });
+
+          // 5. 에러 구독 (추가해두면 좋음)
           client.subscribe(`/topic/game/${gameId}/errors`, (msg) => {
             alert("❌ 에러: " + JSON.parse(msg.body).message);
           });
@@ -270,24 +313,33 @@ function App() {
 
   // 🎯 [발행] 숫자 입력 시 서버로 던지는 전용 함수
   const sendMove = useCallback(
-    (client, gameId, row, col, value) => {
-      if (!client || !client.connected) {
-        console.warn("⚠️ 소켓이 연결되지 않았습니다.");
+    (row, col, value) => {
+      // 🎯 [수정] stompClientRef.current를 직접 참조해서 유연하게 대응
+      const client = stompClientRef.current;
+      const gameId = roomInfo?.gameId; // 🎯 여기서 현재 방의 gameId를 가져옴
+
+      if (!client || !client.connected || !gameId) {
+        console.warn("⚠️ 소켓 연결 또는 gameId가 없습니다:", {
+          connected: client?.connected,
+          gameId,
+        });
         return;
       }
 
+      console.log(`🚀 [SEND] ${gameId} - [${row},${col}] = ${value}`);
+
       client.publish({
-        destination: `/multi/game/${gameId}/place`, // 👈 백엔드 @MessageMapping 주소
+        destination: `/multi/game/${gameId}/place`,
         body: JSON.stringify({
           row,
           col,
           value,
-          elapsedTime: seconds, // 👈 현재 타이머 시간도 같이 보냄
+          elapsedTime: seconds,
         }),
       });
     },
-    [seconds],
-  ); // seconds가 바뀔 때마다 갱신
+    [roomInfo?.gameId, seconds],
+  ); // 🎯 roomInfo가 바뀔 때마다 함수 갱신
 
   // multiplayer 게임 시작 함수 (방장이 시작 버튼 누르면 호출)
   const startMultiGame = useCallback(() => {
@@ -296,10 +348,12 @@ function App() {
       alert("방장만 게임을 시작할 수 있거나, 연결이 불안정합니다.");
       return;
     }
+    const gid = roomInfo?.gameId;
+    if (!gid) return alert("게임 ID가 없습니다.");
 
     console.log("🚀 멀티플레이 게임 시작 신호 발송!");
 
-    // 2. 서버의 @MessageMapping("/game/{gameId}/start") 주소로 신호 쏨
+    // 2. 서버의 @MessageMapping("/multi/game/{gameId}/start") 주소로 신호 쏨
     stompClientRef.current.publish({
       destination: `/multi/game/${roomInfo.gameId}/start`,
       body: JSON.stringify({
@@ -308,6 +362,34 @@ function App() {
       }),
     });
   }, [roomInfo, stompClientRef]);
+
+  const handleMultiInput = useCallback(
+    (row, col, value) => {
+      // 🎯 roomInfo나 game 객체에서 최신 gameId 추출
+      const targetId = game?.gameId || roomInfo?.gameId;
+
+      if (!targetId || !stompClientRef.current?.connected) {
+        console.warn("⚠️ 멀티플레이 입력 불가: 소켓 연결 또는 ID 없음", {
+          targetId,
+        });
+        return;
+      }
+
+      // 🎯 전송 (HTTP Post가 아니라 소켓 Publish!)
+      stompClientRef.current.publish({
+        destination: `/multi/game/${targetId}/place`,
+        body: JSON.stringify({
+          row,
+          col,
+          value,
+          elapsedTime: seconds,
+        }),
+      });
+
+      console.log(`📤 [MULTI SEND] ${targetId} -> [${row}, ${col}]: ${value}`);
+    },
+    [game?.gameId, roomInfo?.gameId, seconds],
+  );
 
   // 🎯 시간 포맷 함수
   const formatTime = (totalSeconds) => {
@@ -466,12 +548,31 @@ function App() {
       setSavedGameInfo(null);
     }
   }, []);
+
   // 🎯 숫자 입력 ( api.js 적용)
   const placeNumber = useCallback(
     async (row, col, value) => {
-      if (!game || isPlacing) return;
+      // 🎯 1. 기본 방어 로직 (좌표나 게임 객체 없으면 중단)
+      if (!game || row === null || col === null) return;
 
-      // 🎯 1. [낙관적 업데이트] 이건 싱글/멀티 공통! 일단 화면부터 바꿈
+      // 🔥 2. [핵심] 이미 숫자가 있는 칸은 "확정된 칸"으로 간주하고 클릭 무시
+      // value가 0이 아닌 숫자가 이미 들어있다면 함수를 여기서 바로 끝냅니다.
+      if (game.board[row][col] !== 0) {
+        console.warn("🚫 이미 숫자가 채워진 칸은 수정할 수 없습니다.");
+        return;
+      }
+
+      // 🎯 [수정] 서버가 줄 수 있는 모든 ID 후보군을 다 뒤져서 하나라도 걸리게 함
+      const currentId =
+        game.gameId || game.id || game.game_id || roomInfo?.gameId;
+
+      if (!currentId) {
+        // 🚨 여기서 game 객체를 통째로 찍어서 '진짜 이름'이 뭔지 확인해봐!
+        console.error("❌ ID 실종! 객체 구조 확인:", game);
+        return;
+      }
+
+      // 🎯 2. [낙관적 업데이트] 화면 먼저 바꾸기 (사용자 경험)
       setGame((prev) => {
         const newBoard = [...prev.board];
         newBoard[row] = [...newBoard[row]];
@@ -479,54 +580,67 @@ function App() {
         return { ...prev, board: newBoard };
       });
 
-      // 🔥 [멀티플레이 전용 분기] gameId가 multi: 로 시작하면 소켓으로 던짐
-      if (
-        game.gameId?.startsWith("multi:") &&
-        stompClientRef.current?.connected
-      ) {
-        stompClientRef.current.publish({
-          destination: `/multi/game/${game.gameId}/place`,
-          body: JSON.stringify({ row, col, value, elapsedTime: seconds }),
-        });
-        return; // 👈 API 호출 안 하고 리턴!
+      // 🔥 3. [멀티플레이 분기]
+      if (currentId.toString().startsWith("multi:")) {
+        if (stompClientRef.current?.connected) {
+          stompClientRef.current.publish({
+            destination: `/multi/game/${currentId}/place`,
+            body: JSON.stringify({ row, col, value, elapsedTime: seconds }),
+          });
+          return; // 👈 소켓은 여기서 끝!
+        }
+        console.warn("⚠️ 소켓 연결 끊김, 재연결 필요");
+        return;
       }
 
-      setIsPlacing(true);
-      setStatusMessage("숫자 입력 중...");
+      // 🎯 4. [싱글플레이 로직] 여기서부터는 비로그인/로그인 솔로 전용
+      if (isPlacing) return; // 🎯 중복 클릭 방지는 여기서만!
 
+      setIsPlacing(true);
       try {
-        // 🎯 이제 여기서 401 나면 api.js가 알아서 reissue 해옴
-        const res = await api.post(`/games/${game.gameId}/place`, {
+        const res = await api.post(`/games/${currentId}/place`, {
           row,
           col,
           value,
           elapsedTime: seconds,
         });
-        const data = res.data;
 
-        const serverBoard = data.board;
+        const data = res.data;
         setGame((prev) => ({
           ...prev,
-          board: serverBoard.map((r) => r.map((c) => c.v)),
-          notes: serverBoard.map((r) => r.map((c) => Array.from(c.m || []))),
+          board: data.board.map((r) => r.map((c) => c.v)),
+          notes: data.board.map((r) => r.map((c) => Array.from(c.m || []))),
           status: data.status,
           life: data.life,
         }));
-        setStatusMessage(`${data.status} (life: ${data.life})`);
       } catch (error) {
-        setStatusMessage("에러: " + error.message);
+        console.error("💥 싱글플레이 요청 실패:", error);
+        setStatusMessage("입력 실패: " + error.message);
       } finally {
         setIsPlacing(false);
       }
     },
-    [game, seconds, isPlacing, stompClient, sendMove],
+    // 🎯 의존성 배열 최적화: 필요한 최소 값만 감시
+    [game, seconds, isPlacing],
   );
 
   // 🎯 메모 토글 (원본 100% + api.js 적용)
   const toggleNote = useCallback(
     async (row, col, value) => {
       if (!game || value === 0) return;
+      const currentId = game.gameId || game.id || roomInfo?.gameId;
       try {
+        // 🔥 멀티플레이면 소켓 발사
+        if (
+          currentId?.startsWith("multi:") &&
+          stompClientRef.current?.connected
+        ) {
+          stompClientRef.current.publish({
+            destination: `/multi/game/${currentId}/memo`,
+            body: JSON.stringify({ row, col, value }),
+          });
+          return; // 🎯 여기서 종료!
+        }
         const res = await api.post(`/games/${game.gameId}/memo`, {
           row,
           col,
@@ -678,44 +792,6 @@ function App() {
     };
   }, [roomInfo?.gameId]); // 👈 gameId가 바뀔 때만 실행되므로 중복 실행 방지됨
 
-  const testSocket = () => {
-    const currentGameId = "multi:2cfdb7b2-99d8-4934-bc5c-9f4df06ce113";
-    const currentRoomCode = "D1E92F";
-
-    // 🎯 주소 뒤에 ?gameId=...&roomCode=... 를 반드시 붙여야 500 에러 안 남!
-    const socket = new SockJS(
-      `${API_BASE_URL}/ws-stomp?gameId=${currentGameId}&roomCode=${currentRoomCode}`,
-    );
-    const client = Stomp.over(socket);
-
-    client.connect(
-      {},
-      (frame) => {
-        console.log("✅ 드디어 연결 성공!:", frame);
-
-        // 🎯 [구독] 이 방의 실시간 소식을 듣겠다!
-        client.subscribe(`/topic/game/${currentGameId}`, (msg) => {
-          console.log("📢 [실시간 데이터 도착]:", JSON.parse(msg.body));
-        });
-
-        // 🎯 [테스트 발행] 2초 뒤에 서버로 숫자 하나 쏴보기
-        setTimeout(() => {
-          console.log("🚀 서버로 숫자 쏘는 중...");
-          client.send(
-            `/multi/game/${currentGameId}/place`,
-            {},
-            JSON.stringify({ row: 0, col: 0, value: 7, elapsedTime: 100 }),
-          );
-        }, 2000);
-      },
-      (error) => {
-        console.error("❌ STOMP 연결 에러:", error);
-      },
-    );
-  };
-
-  console.log("🕵️ WaitingRoom 타입 체크:", typeof WaitingRoom);
-
   // --- Render ---
   return (
     <div
@@ -831,8 +907,27 @@ function App() {
             <NumberPad
               viewMode={viewMode}
               isNoteMode={isNoteMode}
-              onInput={isNoteMode ? toggleNote : placeNumber}
-              onErase={() => placeNumber(selectedCell.row, selectedCell.col, 0)}
+              onInput={(r, c, v) => {
+                // 🎯 멀티플레이 판별
+                if (game?.gameId?.startsWith("multi:")) {
+                  if (isNoteMode) {
+                    // 메모 기능도 소켓으로 쏘고 싶다면 별도 함수 필요, 일단 일반 입력만!
+                    handleMultiInput(r, c, v);
+                  } else {
+                    handleMultiInput(r, c, v);
+                  }
+                } else {
+                  // 기존 싱글플레이 로직
+                  isNoteMode ? toggleNote(r, c, v) : placeNumber(r, c, v);
+                }
+              }}
+              onErase={() => {
+                if (game?.gameId?.startsWith("multi:")) {
+                  handleMultiInput(selectedCell.row, selectedCell.col, 0);
+                } else {
+                  placeNumber(selectedCell.row, selectedCell.col, 0);
+                }
+              }}
               selectedCell={selectedCell}
               isPlacing={isPlacing}
             />

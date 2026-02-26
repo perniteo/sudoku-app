@@ -49,6 +49,15 @@ public class GameMessageController {
     messagingTemplate.convertAndSend("/topic/game/" + gameId, response);
   }
 
+  // [실시간 메모 공유] /multi/game/{gameId}/memo
+  @MessageMapping("/game/{gameId}/memo")
+  @SendTo("/topic/game/{gameId}/memo") // 🎯 메모 전용 채널로 분리해서 쏘는 게 성능상 이득!
+  public Map<String, Object> handleMultiMemo(@DestinationVariable String gameId, Map<String, Object> memoData) {
+    // 🎯 Redis 저장 로직 없이 바로 리턴 (배달만 함)
+    // payload: { row: 0, col: 1, value: 5 }
+    return memoData;
+  }
+
   // [실시간 채팅] /multi/game/{gameId}/chat
   @MessageMapping("/game/{gameId}/chat")
   @SendTo("/topic/game/{gameId}/chat")    // 👈 서버가 구독자들에게 뿌려주는 주소

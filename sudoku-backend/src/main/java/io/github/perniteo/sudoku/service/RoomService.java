@@ -94,7 +94,7 @@ public class RoomService {
   }
 
   private String createRandomCode() {
-    // 숫자 + 대문자 조합 6자리 생성 로직 (생략 가능, 아까 드린 로직 사용)
+    // 숫자 + 대문자 조합 6자리 생성 로직
     return UUID.randomUUID().toString().substring(0, 6).toUpperCase();
   }
 

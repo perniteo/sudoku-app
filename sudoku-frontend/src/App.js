@@ -1,4 +1,10 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import React, {
+  useEffect,
+  useState,
+  useCallback,
+  useRef,
+  useMemo,
+} from "react";
 import SudokuBoard from "./components/SudokuBoard";
 import AuthModal from "./components/AuthModal";
 import GameOverlay from "./components/GameOverlay";
@@ -51,6 +57,24 @@ function App() {
 
   const [rooms, setRooms] = useState([]); // 🎯 방 목록 저장용
 
+  // 🎯 1. anonymousId를 먼저 선언 (상단)
+  const [anonymousId] = useState(() => {
+    const savedId = localStorage.getItem("sudoku_anon_id");
+    if (savedId) return savedId;
+    const newId = `anon:${Math.random().toString(36).substring(2, 11)}`;
+    localStorage.setItem("sudoku_anon_id", newId);
+    return newId;
+  });
+
+  // 🎯 2. myId를 '계산된 값'으로 정의 (useMemo 추천)
+  // user 객체가 null일 때를 대비해 ?. (Optional Chaining) 필수!
+  const myId = useMemo(() => {
+    if (token && user?.email) {
+      return `user:${user.email}`;
+    }
+    return anonymousId;
+  }, [token, user, anonymousId]);
+
   const leaveRoom = useCallback(() => {
     // 1. 소켓 연결 해제 (무전기 끄기)
     if (stompClientRef.current) {
@@ -84,8 +108,8 @@ function App() {
   };
 
   const connectMultiplayer = useCallback(
-    (gameId) => {
-      if (!gameId) return;
+    (gameId, roomCode) => {
+      if (!gameId || !roomCode) return;
 
       // 🎯 1. [중복 방지] 이미 연결된 소켓이 '진짜로' 살아있다면 새로 연결 안 함
       if (stompClientRef.current?.connected) {
@@ -101,7 +125,9 @@ function App() {
       }
 
       // 🎯 SockJS와 StompJS 호환성을 위해 Stomp.over(socket) 방식 사용
-      const socket = new SockJS(`${API_BASE_URL}/ws-stomp?gameId=${gameId}`);
+      const socket = new SockJS(
+        `${API_BASE_URL}/ws-stomp?gameId=${gameId}&roomCode=${roomInfo?.roomCode || ""}`,
+      );
       const client = Stomp.over(socket);
 
       // 로그 너무 많으면 주석 처리해
@@ -129,8 +155,10 @@ function App() {
               return {
                 ...prev,
                 gameId: data.gameId || gameId,
-                board: data.board.map((r) => r.map((c) => c.v)),
-                difficulty: data.difficulty || roomInfo?.difficulty,
+                board: data.board,
+                difficulty:
+                  data.difficulty || roomInfo?.difficulty || prev?.difficulty,
+                lastInteract: data.lastInteract,
 
                 // 🔥 [핵심 방어] 서버 데이터(serverNotes)가 있으면 쓰고,
                 // 없으면 내 기존 메모(prev?.notes)를 쓰되,
@@ -209,7 +237,7 @@ function App() {
 
       stompClientRef.current = client;
     },
-    [API_BASE_URL],
+    [API_BASE_URL, roomInfo?.difficulty, roomInfo?.roomCode],
   );
 
   const handleCreateMultiRoom = async (selectedDifficulty) => {
@@ -234,7 +262,8 @@ function App() {
 
       // 🎯 4. [핵심] 추출한 gameId를 "직접" 넘겨서 소켓 연결
       // (상태값인 gameId는 비동기라 아직 null일 수 있으니 res.data에서 꺼낸 걸 바로 씀)
-      const client = connectMultiplayer(gameId);
+      // roomCode도 같이 넘겨서 서버가 Redis 고칠 때 쓸 열쇠(Key)로 활용하게 함
+      const client = connectMultiplayer(gameId, roomCode);
       setStompClient(client);
     } catch (error) {
       console.error("방 생성 에러:", error);
@@ -250,9 +279,11 @@ function App() {
       const res = await api.get(`/rooms/join/${code.toUpperCase()}`);
       const { gameId, difficulty } = res.data;
 
+      const roomCode = code.toUpperCase(); // 입력한 코드를 대문자로 변환해서 저장 (서버도 대문자로 처리한다고 가정)
+
       // 🎯 2. 방 정보 세팅 (참가자니까 isHost: false)
       setRoomInfo({
-        roomCode: code.toUpperCase(),
+        roomCode: roomCode,
         gameId,
         isHost: false,
         difficulty,
@@ -260,7 +291,8 @@ function App() {
       setViewMode("waiting");
 
       // 🎯 3. 무전기 채널 맞추기 (소켓 연결)
-      const client = connectMultiplayer(gameId); // 기존 함수 재사용
+      // roomCode도 같이 넘겨서 서버가 Redis 고칠 때 쓸 열쇠(Key)로 활용하게 함
+      const client = connectMultiplayer(gameId, roomCode); // 기존 함수 재사용
       setStompClient(client);
 
       // (선택) 채팅방에 "XX님이 입장했습니다" 알림 쏘는 로직 추가 가능
@@ -383,12 +415,13 @@ function App() {
           col,
           value,
           elapsedTime: seconds,
+          userId: myId,
         }),
       });
 
       console.log(`📤 [MULTI SEND] ${targetId} -> [${row}, ${col}]: ${value}`);
     },
-    [game?.gameId, roomInfo?.gameId, seconds],
+    [game?.gameId, roomInfo?.gameId, seconds, user?.email, token, anonymousId],
   );
 
   // 🎯 시간 포맷 함수
@@ -443,6 +476,7 @@ function App() {
     setUser({ token: newToken });
     setViewMode("menu");
   };
+
   // 🎯 게임 시작 (fetch -> api.post 교체, 네 원본 로직 100%)
   const startGame = async () => {
     setStatusMessage("게임 생성 중...");
@@ -460,7 +494,6 @@ function App() {
       localStorage.setItem("sudoku_game_id", data.gameId);
 
       const serverBoard = data.board;
-      const newBoard = serverBoard.map((r) => r.map((c) => c.v));
       const newNotes = serverBoard.map((r) =>
         r.map((c) => Array.from(c.m || [])),
       );
@@ -469,7 +502,7 @@ function App() {
       setGame({
         ...data,
         id: data.gameId,
-        board: newBoard,
+        board: serverBoard,
         notes: newNotes,
         life: data.life ?? 3,
         difficulty,
@@ -497,7 +530,6 @@ function App() {
       const data = res.data;
 
       const serverBoard = data.board;
-      const newBoard = serverBoard.map((row) => row.map((cell) => cell.v));
       const newNotes = serverBoard.map((row) =>
         row.map((cell) => Array.from(cell.m || [])),
       );
@@ -505,7 +537,7 @@ function App() {
       setGame({
         ...data,
         id: data.gameId || data.id,
-        board: newBoard,
+        board: serverBoard,
         notes: newNotes,
         life: data.life || 3,
         difficulty: data.difficulty,
@@ -557,7 +589,12 @@ function App() {
 
       // 🔥 2. [핵심] 이미 숫자가 있는 칸은 "확정된 칸"으로 간주하고 클릭 무시
       // value가 0이 아닌 숫자가 이미 들어있다면 함수를 여기서 바로 끝냅니다.
-      if (game.board[row][col] !== 0) {
+      // 🎯 1. [해결] 객체인지 숫자인지 판별해서 실제 숫자 값(v)을 가져옴
+      const cellData = game.board[row][col];
+      const currentValue = typeof cellData === "object" ? cellData.v : cellData;
+
+      // 🎯 2. [수정] 객체 자체를 0과 비교하지 말고, 추출한 숫자가 0인지 확인!
+      if (currentValue !== 0) {
         console.warn("🚫 이미 숫자가 채워진 칸은 수정할 수 없습니다.");
         return;
       }
@@ -585,7 +622,13 @@ function App() {
         if (stompClientRef.current?.connected) {
           stompClientRef.current.publish({
             destination: `/multi/game/${currentId}/place`,
-            body: JSON.stringify({ row, col, value, elapsedTime: seconds }),
+            body: JSON.stringify({
+              row,
+              col,
+              value,
+              elapsedTime: seconds,
+              userId: token ? `user:${user.email}` : anonymousId,
+            }),
           });
           return; // 👈 소켓은 여기서 끝!
         }
@@ -606,9 +649,10 @@ function App() {
         });
 
         const data = res.data;
+        if (data.elapsedTime !== undefined) setSeconds(data.elapsedTime); // 추가
         setGame((prev) => ({
           ...prev,
-          board: data.board.map((r) => r.map((c) => c.v)),
+          board: data.board,
           notes: data.board.map((r) => r.map((c) => Array.from(c.m || []))),
           status: data.status,
           life: data.life,
@@ -621,7 +665,7 @@ function App() {
       }
     },
     // 🎯 의존성 배열 최적화: 필요한 최소 값만 감시
-    [game, seconds, isPlacing],
+    [game, seconds, isPlacing, roomInfo, token, user?.email, anonymousId],
   );
 
   // 🎯 메모 토글 (원본 100% + api.js 적용)
@@ -650,7 +694,7 @@ function App() {
         const serverBoard = data.board;
         setGame((prev) => ({
           ...prev,
-          board: serverBoard.map((r) => r.map((c) => c.v)),
+          board: serverBoard,
           notes: serverBoard.map((r) => r.map((c) => Array.from(c.m || []))),
         }));
       } catch (error) {
@@ -779,7 +823,7 @@ function App() {
     // roomInfo가 생기면 자동으로 소켓을 연결함
     if (roomInfo?.gameId) {
       console.log("📡 [Effect] 소켓 연결 시도:", roomInfo.gameId);
-      connectMultiplayer(roomInfo.gameId);
+      connectMultiplayer(roomInfo.gameId, roomInfo.roomCode);
     }
 
     // 🎯 [클린업] 방을 나가거나 컴포넌트가 죽을 때 소켓을 확실히 끔
@@ -888,6 +932,7 @@ function App() {
                 notes={game.notes}
                 selectedCell={selectedCell}
                 onSelectCell={setSelectedCell}
+                myId={myId} // 👈 이거 필수!
               />
               <GameOverlay
                 game={game}

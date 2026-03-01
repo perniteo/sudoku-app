@@ -43,6 +43,9 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                 // 임시로 랜덤 ID라도 넣어보고 터지는지 확인
                 attributes.put("gameId", "UNKNOWN_" + UUID.randomUUID());
               }
+
+              String roomCode = servletRequest.getParameter("roomCode");
+              attributes.put("roomCode", roomCode);
             }
             return true;
           }

@@ -1,0 +1,39 @@
+// Use DBML to define your database structure
+// Docs: https://dbml.dbdiagram.io/docs
+
+Project sudoku {
+  database_type: 'PostgreSQL'
+}
+
+// 1. 유저 정보 (영구 보관)
+Table users {
+  id integer [primary key, increment]
+  email varchar(255) [unique, not null, note: 'Unique Index로 조회 최적화']
+  password varchar(255) [not null]
+  nickname varchar(50) [not null]
+  created_at timestamp [default: `now()`]
+}
+
+// 2. 게임 완료 기록 (영구 보관)
+Table game_records {
+  id integer [primary key, increment]
+  email varchar(255) [ref: > users.email] // 유저가 삭제되면 기록도 관리되게 설정
+  difficulty integer [not null]
+  elpased_time bigint
+  life integer
+  status varchar(20)
+  board_id bigint
+  completed_at timestamp [default: `now()`]
+}
+
+// 3. 스도쿠 문제 은행 (Metadata)
+Table board {
+  id integer [primary key, increment]
+  start_board jsonb [not null]
+  answer_board jsonb [not null]
+  level integer
+  created_at timestamp
+}
+
+// 🎯 게임 기록과 문제 은행을 연결합니다. 추후 통계 확장 가능성
+Ref: game_records.board_id > board.id

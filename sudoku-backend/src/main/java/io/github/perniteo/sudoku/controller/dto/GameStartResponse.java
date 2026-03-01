@@ -11,5 +11,6 @@ public class GameStartResponse {
   String gameId;
   CellRedisDto[][] board;
   String status;
+  int difficulty;
 
 }

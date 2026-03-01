@@ -26,7 +26,9 @@ public class RoomController {
   public ResponseEntity<?> createRoom(@RequestParam int difficulty) throws JsonProcessingException {
     // 기존 서비스로 Stateless 게임 생성 (임시 ID 부여)
     String tempId = "multi:" + java.util.UUID.randomUUID();
-    gameService.createGame(tempId, difficulty);
+
+    // 방 생성시 createGame(게임 시작 해버리는 문제 해결)
+    // gameService.createGame(tempId, difficulty);
 
     // Redis에 6자리 참여 코드와 매핑 저장
     String roomCode = roomService.generateRoomCode(tempId, difficulty);

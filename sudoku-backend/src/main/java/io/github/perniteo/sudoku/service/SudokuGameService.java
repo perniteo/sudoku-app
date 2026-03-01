@@ -11,6 +11,7 @@ import io.github.perniteo.sudoku.repository.GameRepository;
 import io.github.perniteo.sudoku.util.generator.GeneratedSudoku;
 import io.github.perniteo.sudoku.util.generator.SudokuGenerator;
 import jakarta.transaction.Transactional;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.Optional;
@@ -80,28 +81,43 @@ public class SudokuGameService {
   }
 
   @Transactional
-  public PlaceResponse placeNumber(String userId, int row, int col, int value, long elapsedTime) {
-    SudokuGame game = getGame(userId);
-    PlaceResult result = game.placeNumber(row, col, value);
-    game.updateTime(elapsedTime);
+  public PlaceResponse placeNumber(String gameId, String userId, int row, int col, int value, long clientTime) {
+    // 조회
+    SudokuGame game = getGame(gameId);
+    // 기록
+    PlaceResult result = game.placeNumber(row, col, value, userId);
+
+    // 시간 결정 로직
+    long finalTime;
+    if (gameId.startsWith("multi:")) {
+      LocalDateTime start = game.getStartedAt();
+      finalTime = java.time.Duration.between(start, LocalDateTime.now()).getSeconds();
+    } else {
+      finalTime = clientTime;
+    }
+
+    game.updateTime(finalTime);
 
     // 🎯 삭제나 업데이트 전에 최종 상태 스냅샷을 먼저 만듭니다.
     PlaceResponse response = new PlaceResponse(
         result.name(),
         game.getPuzzleBoard().getCellSnapshots(),
         game.getLife(),
-        game.getStatus().name()
+        game.getStatus().name(),
+        finalTime,
+        userId
     );
 
+    // single play - gameId = userId
     if (result == PlaceResult.GAME_OVER || result == PlaceResult.COMPLETED) {
       // [영구 저장] PostgreSQL
-      saveRecordToDb(userId, game);
+      saveRecordToDb(gameId, game);
       // 2. 🎯 Redis 데이터를 지우지 않고 '짧은 수명'으로 다시 저장
       // (프론트엔드가 최종 화면을 그릴 시간을 벌어줌 + 유저 이탈 시 자동 삭제)
-      gameRepository.saveWithTTL(userId, game, 600); // 600초(10분) 뒤 자동 삭제
+      gameRepository.saveWithTTL(gameId, game, 600); // 600초(10분) 뒤 자동 삭제
     } else {
       // [업데이트] Redis
-      gameRepository.save(userId, game);
+      gameRepository.save(gameId, game);
     }
 
     return response; // 🎯 조립된 응답을 컨트롤러로 리턴

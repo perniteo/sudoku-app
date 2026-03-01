@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
 
-// 1. 흔들리는 애니메이션 정의
 const shakeKeyframes = `
   @keyframes shake {
     0% { transform: translateX(0); background-color: #ffcfcf; }
@@ -12,20 +11,35 @@ const shakeKeyframes = `
 `;
 
 const SudokuCell = React.memo(
-  ({ rIdx, cIdx, cell, notes, isSelected, onClick }) => {
-    const safeNotes = Array.isArray(notes) ? notes : [];
+  ({ rIdx, cIdx, cell, notes, userId, isFixed, isSelected, onClick, myId }) => {
     const [isWrong, setIsWrong] = useState(false);
-    const prevCell = useRef(cell); // 🎯 이전 값을 기억함
+    const prevCell = useRef(cell);
 
-    // 🎯 [핵심 로직] 이전 값이 0이 아니었는데 지금 0이 됐다면 = '틀려서 지워짐'
     useEffect(() => {
+      // 🎯 숫자가 틀려서 서버가 0으로 돌려보냈을 때만 흔들림
       if (prevCell.current !== 0 && cell === 0) {
         setIsWrong(true);
-        const timer = setTimeout(() => setIsWrong(false), 500); // 0.5초 뒤 초기화
+        const timer = setTimeout(() => setIsWrong(false), 500);
         return () => clearTimeout(timer);
       }
-      prevCell.current = cell; // 현재 값을 다음 비교를 위해 저장
+      prevCell.current = cell;
     }, [cell]);
+
+    const getTextColor = () => {
+      console.log("나의 ID:", myId, "셀 ID:", userId);
+      // 🎯 1. 진짜 초기 힌트 (고정되어 있고, 누가 썼는지 정보가 없음)
+      if (isFixed && !userId) {
+        return "#000";
+      }
+
+      // 2. 숫자가 0(빈칸)이면 색상 무의미
+      if (cell === 0) return "#000";
+
+      // 🎯 3. 유저가 입력해서 맞춘 정답 (isFixed가 true여도 여기로 옴)
+      // 내 ID와 비교해서 보라색(#673AB7) 또는 파란색(#2196F3)
+      if (userId === myId) return "#673AB7"; // 내꺼 (보라)
+      return "#2196F3"; // 남이 맞춘 거 (파랑)
+    };
 
     return (
       <div
@@ -36,26 +50,20 @@ const SudokuCell = React.memo(
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontSize: cell !== 0 ? "14px" : "8px",
-          boxSizing: "border-box",
+          fontSize: cell !== 0 ? "18px" : "9px",
+          fontWeight: isFixed ? "bold" : "500",
           cursor: "pointer",
           borderTop: rIdx % 3 === 0 ? "2px solid #000" : "1px solid #333",
           borderLeft: cIdx % 3 === 0 ? "2px solid #000" : "1px solid #333",
           borderRight: cIdx === 8 ? "2px solid #000" : "1px solid #333",
           borderBottom: rIdx === 8 ? "2px solid #000" : "1px solid #333",
-
-          // 🎯 배경색: 선택(파랑) -> 틀림(순간 빨강) -> 평소(흰색)
           backgroundColor: isSelected
             ? "#cde7ff"
             : isWrong
               ? "#ffcfcf"
               : "#fff",
-
-          // 🎯 애니메이션: 진짜 틀렸을 때만(isWrong) 실행
           animation: isWrong ? "shake 0.4s ease-in-out" : "none",
-
-          transition: "background-color 0.2s",
-          color: "#000",
+          color: getTextColor(), // 🎯 색상 적용
           position: "relative",
           userSelect: "none",
         }}
@@ -71,8 +79,7 @@ const SudokuCell = React.memo(
               gridTemplateColumns: "repeat(3, 1fr)",
               width: "100%",
               height: "100%",
-              padding: "1px",
-              pointerEvents: "none",
+              color: "#aaa",
             }}
           >
             {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
@@ -81,8 +88,7 @@ const SudokuCell = React.memo(
                 style={{
                   textAlign: "center",
                   fontSize: "9px",
-                  lineHeight: "10px",
-                  visibility: safeNotes.includes(n) ? "visible" : "hidden",
+                  visibility: notes?.includes(n) ? "visible" : "hidden",
                 }}
               >
                 {n}

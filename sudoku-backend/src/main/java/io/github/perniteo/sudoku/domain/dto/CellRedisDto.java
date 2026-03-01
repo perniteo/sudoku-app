@@ -14,4 +14,5 @@ public class CellRedisDto {
   private int v;       // value (이름을 줄여서 Redis 용량 최적화)
   private boolean f;   // fixed
   private Set<Integer> m; // memo
+  private String i; // userId
 }

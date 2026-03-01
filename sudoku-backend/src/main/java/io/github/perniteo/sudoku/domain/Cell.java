@@ -10,17 +10,23 @@ public class Cell {
   private int value;
   private boolean fixed;
   private Set<Integer> memo;
+  private String userId;
 
   public Cell(int value, boolean fixed) {
     this.value = value;
     this.fixed = fixed;
   }
 
-  public Cell(int value, boolean fixed, Set<Integer> memo) {
+  public Cell(int value, boolean fixed, Set<Integer> memo, String userId) {
     this.value = value;
     this.fixed = fixed;
     // 서버에서 불러올 때 memo가 null이면 빈 HashSet으로 초기화
     this.memo = (memo == null) ? new HashSet<>() : memo;
+    this.userId = userId;
+  }
+
+  public void setUserId(String userId) {
+    this.userId = userId;
   }
 
   public void setValue(int value) {

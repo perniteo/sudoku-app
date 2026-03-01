@@ -9,6 +9,7 @@ import io.github.perniteo.sudoku.controller.dto.PlaceResponse;
 import io.github.perniteo.sudoku.domain.SudokuGame;
 import io.github.perniteo.sudoku.service.RoomService;
 import io.github.perniteo.sudoku.service.SudokuGameService;
+import java.security.Principal;
 import java.util.HashMap;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +18,7 @@ import org.springframework.messaging.handler.annotation.MessageExceptionHandler;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.SendTo;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
 
 @Controller
@@ -40,11 +42,24 @@ public class GameMessageController {
 
   // [게임 조작] /multi/game/{gameId}/place
   @MessageMapping("/game/{gameId}/place")
-  public void handleMultiPlace(@DestinationVariable String gameId, PlaceRequest request) {
+  public void handleMultiPlace(@DestinationVariable String gameId, PlaceRequest request,
+      Principal principal) {
+    // 1. principal이 null인지 확인하면 비로그인/로그인 구분이 정확해집니다.
+    String userId;
+    if (principal != null) {
+      userId = "user:" + principal.getName();
+    } else {
+      userId = request.getUserId();
+    }
+
+    System.out.println("🆔 진짜 정제된 userId: " + userId);
+
     PlaceResponse response = gameService.placeNumber(
-        gameId, request.getRow(), request.getCol(),
+        gameId, userId, request.getRow(), request.getCol(),
         request.getValue(), request.getElapsedTime()
     );
+    System.out.println("resp : getLastInteract -> " + response.getLastInteract());
+
     // 해당 방을 구독 중인 모든 유저에게 결과 전송
     messagingTemplate.convertAndSend("/topic/game/" + gameId, response);
   }
@@ -107,7 +122,8 @@ public class GameMessageController {
     return new GameStartResponse(
         gameId,
         game.getPuzzleBoard().getCellSnapshots(), // 👈 기존과 동일한 스냅샷 포맷
-        game.getStatus().name()
+        game.getStatus().name(),
+        difficulty
     );
   }
 }

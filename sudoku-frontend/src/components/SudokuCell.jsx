@@ -26,7 +26,7 @@ const SudokuCell = React.memo(
     }, [cell]);
 
     const getTextColor = () => {
-      console.log("나의 ID:", myId, "셀 ID:", userId);
+      // console.log("나의 ID:", myId, "셀 ID:", userId);
       // 🎯 1. 진짜 초기 힌트 (고정되어 있고, 누가 썼는지 정보가 없음)
       if (isFixed && !userId) {
         return "#000";
@@ -43,7 +43,10 @@ const SudokuCell = React.memo(
 
     return (
       <div
-        onClick={() => onClick({ row: rIdx, col: cIdx })}
+        onClick={() => {
+          console.log(`🖱️ 칸 클릭됨: ${rIdx}, ${cIdx}`);
+          onClick({ row: rIdx, col: cIdx });
+        }}
         style={{
           width: "40px",
           height: "40px",

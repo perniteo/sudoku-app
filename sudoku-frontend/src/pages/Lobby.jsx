@@ -17,3 +17,5 @@ const Lobby = ({ rooms, onCreateRoom, onJoinRoom }) => (
     </div>
   </div>
 );
+
+export default Lobby;

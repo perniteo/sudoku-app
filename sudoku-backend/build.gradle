@@ -55,6 +55,12 @@ dependencies {
     // flyway (db migration)
     implementation 'org.flywaydb:flyway-core:10.10.0'
     implementation 'org.flywaydb:flyway-database-postgresql:10.10.0'
+
+    // WebSocket & STOMP 메시징 핵심 라이브러리
+    implementation 'org.springframework.boot:spring-boot-starter-websocket'
+
+    // 보안 처리를 위한 Spring Security Messaging (나중에 토큰 인증 시 필요)
+    // implementation 'org.springframework.security:spring-security-messaging'
 }
 
 test {

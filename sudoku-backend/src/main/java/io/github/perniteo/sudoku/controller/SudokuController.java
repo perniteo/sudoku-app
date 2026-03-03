@@ -36,7 +36,7 @@ public class SudokuController {
   @PostMapping({"/start", "/start/{anonymousId}"}) // 두 경로 모두 허용
   public GameStartResponse startGame(
       @AuthenticationPrincipal String email, // String에서 Object로 변경 (익명 유저 대응)
-      @PathVariable(required = false) String id,
+      @PathVariable(value = "anonymousId", required = false) String id,
       @RequestBody GameStartRequest request) throws JsonProcessingException {
     // 1. 식별자 결정 (우선순위: 로그인 이메일 > 전달받은 익명 ID > 신규 생성)
     String finalId;
@@ -59,7 +59,8 @@ public class SudokuController {
     return new GameStartResponse(
         finalId,
         game.getPuzzleBoard().getCellSnapshots(),
-        game.getStatus().name()
+        game.getStatus().name(),
+        difficulty
     );
   }
 
@@ -137,6 +138,7 @@ public class SudokuController {
     return board;
   }
 
+  // single play
   @PostMapping("/{id}/place")
   public PlaceResponse placeNumber(
       @PathVariable String id,
@@ -144,7 +146,7 @@ public class SudokuController {
   ) {
     // 서비스에게 모든 책임을 위임합니다.
     return service.placeNumber(
-        id,
+        id, id,
         request.getRow(),
         request.getCol(),
         request.getValue(),
@@ -163,12 +165,19 @@ public class SudokuController {
     // 2. 수정된 최신 게임 정보 가져오기
     SudokuGame game = service.getGame(id);
 
+    // [핵심] 싱글플레이는 프론트가 보낸 시간을 '골든 타임'으로 인정해줌
+    // 그래야 Pause로 멈춰있던 시간이 보존됨
+    long currentElapsedTime = request.getElapsedTime();
+    game.updateTime(currentElapsedTime);
+    service.saveGame(id, game); // Redis에 시간 갱신 저장
+
     // 3. 전체 보드(CellRedisDto[][])와 함께 응답 반환
     return ResponseEntity.ok(new PlaceResponse(
         "MEMO_TOGGLED",
         game.getPuzzleBoard().getCellSnapshots(), // 👈 이게 있어야 리액트가 그림
         game.getLife(),
-        game.getStatus().name()
+        game.getStatus().name(),
+        currentElapsedTime, id
     ));
   }
 

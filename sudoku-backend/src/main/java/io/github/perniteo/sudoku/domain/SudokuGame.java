@@ -115,7 +115,7 @@ public class SudokuGame {
 
   public long getBoardId() { return boardId; }
 
-  public PlaceResult placeNumber(int row, int col, int value) {
+  public PlaceResult placeNumber(int row, int col, int value, String userId) {
     if (status != GameStatus.PLAYING) return PlaceResult.GAME_OVER;
 
     if (puzzleBoard.isFixed(row, col)) return PlaceResult.ALREADY_FIXED;
@@ -134,7 +134,7 @@ public class SudokuGame {
       return PlaceResult.WRONG;
     }
 
-    puzzleBoard.place(row, col, value);
+    puzzleBoard.place(row, col, value, userId);
 
     if (puzzleBoard.isCompleted()) {
       status = GameStatus.COMPLETED;

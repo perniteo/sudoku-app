@@ -27,13 +27,14 @@ public class SudokuBoard {
   }
 
 
-  public void place(int row, int col, int value) {
+  public void place(int row, int col, int value, String userId) {
     validatePosition(row, col);
     validateValue(value);
     validatePlacement(row, col, value);
 
     cells[row][col].setValue(value);
     cells[row][col].fix();
+    cells[row][col].setUserId(userId);
   }
 
   public void erase(int row, int col) {
@@ -162,7 +163,8 @@ public class SudokuBoard {
         snapshots[r][c] = new CellRedisDto(
             cell.getValue(),
             cell.isFixed(),
-            cell.getMemo()
+            cell.getMemo(),
+            cell.getUserId()
         );
       }
     }
@@ -177,7 +179,7 @@ public class SudokuBoard {
     for (int r = 0; r < 9; r++) {
       for (int c = 0; c < 9; c++) {
         CellRedisDto dto = snapshots[r][c];
-        cells[r][c] = new Cell(dto.getV(), dto.isF(), dto.getM());
+        cells[r][c] = new Cell(dto.getV(), dto.isF(), dto.getM(), dto.getI());
       }
     }
     return new SudokuBoard(cells);

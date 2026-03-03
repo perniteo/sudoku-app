@@ -22,6 +22,7 @@ public class AuthController {
 
   private final AuthService authService;
 
+
   // POST /api/auth/signup
   @PostMapping("/signup")
   public ResponseEntity<String> signUp(@RequestBody SignUpRequest dto) {

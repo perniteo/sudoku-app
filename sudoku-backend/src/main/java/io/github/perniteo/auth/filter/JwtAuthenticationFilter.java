@@ -25,6 +25,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
   protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
       throws ServletException, IOException {
 
+    String requestURI = request.getRequestURI();
+
+    // 🎯 [수정] 웹소켓 연결 경로는 토큰 검사 없이 통과시킨다!
+    if (requestURI.startsWith("/ws-stomp")) {
+      filterChain.doFilter(request, response);
+      return;
+    }
+
     String bearerToken = request.getHeader("Authorization");
 
     // 1. 토큰이 아예 없는 경우 (비로그인 사용자)

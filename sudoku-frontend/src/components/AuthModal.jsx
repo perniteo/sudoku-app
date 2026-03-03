@@ -82,7 +82,7 @@ const AuthModal = ({
             <input
               name="confirmPassword"
               type="password"
-              value="password"
+              value={formData.confirmPassword}
               placeholder="비밀번호 확인"
               style={styles.input}
               onChange={handleChange}

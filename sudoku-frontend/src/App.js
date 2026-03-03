@@ -54,11 +54,13 @@ function App() {
             {/* 메인 메뉴 (싱글 시작/이어하기 등) */}
             <Route
               path="/"
-              element={<Home token={token} anonymousId={anonymousId} />}
+              element={
+                <Home token={token} anonymousId={anonymousId} myId={myId} />
+              }
             />
 
             {/* 방 목록 (로비) */}
-            <Route path="/lobby" element={<Lobby />} />
+            <Route path="/lobby" element={<Lobby myId={myId} />} />
 
             {/* 멀티 대기실 */}
             <Route

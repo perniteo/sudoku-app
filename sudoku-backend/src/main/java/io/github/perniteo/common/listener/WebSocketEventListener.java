@@ -1,6 +1,7 @@
 package io.github.perniteo.common.listener;
 
 import io.github.perniteo.sudoku.service.RoomService;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
@@ -27,14 +28,18 @@ public class WebSocketEventListener {
   public void handleWebSocketDisconnectListener(SessionDisconnectEvent event) {
     StompHeaderAccessor headerAccessor = StompHeaderAccessor.wrap(event.getMessage());
 
-    // 세션에 저장해둔 정보 꺼내기 (연결 시점에 넣어줘야 함)
-    String gameId = (String) headerAccessor.getSessionAttributes().get("gameId");
-    String roomCode = (String) headerAccessor.getSessionAttributes().get("roomCode");
+    // 🎯 인터셉터에서 넣어둔 속성들 꺼내기
+    Map<String, Object> attributes = headerAccessor.getSessionAttributes();
+    if (attributes != null) {
+      String userId = (String) attributes.get("userId");
+      String roomCode = (String) attributes.get("roomCode");
+      String gameId = (String) attributes.get("gameId");
 
-    if (gameId != null) {
-      log.info("유저 퇴장 감지: gameId = {}, roomCode = {}", gameId, roomCode);
-      // 🎯 RoomService에서 인원수 줄이고 방 폭파 로직 실행
-      roomService.leaveRoom(gameId, roomCode);
+      if (userId != null && roomCode != null) {
+        // 🎯 Redis Set에서 유저 제거 (인원수 자동 감소)
+        roomService.leaveRoom(gameId, roomCode, userId);
+        System.out.println("🏃 유저 퇴장 처리 완료: " + userId);
+      }
     }
   }
 }

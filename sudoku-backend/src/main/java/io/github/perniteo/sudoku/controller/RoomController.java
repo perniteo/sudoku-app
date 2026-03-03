@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -21,29 +22,28 @@ public class RoomController {
   private final SudokuGameService gameService;
   private final RoomService roomService;
 
-  // 🎯 1. 멀티플레이 방 생성 (Host)
   @PostMapping("/create")
-  public ResponseEntity<?> createRoom(@RequestParam int difficulty) throws JsonProcessingException {
-    // 기존 서비스로 Stateless 게임 생성 (임시 ID 부여)
+  public ResponseEntity<?> createRoom(
+      @RequestParam int difficulty,
+      @RequestParam String userId // 🎯 프론트의 myId (anon:xxx 혹은 user:xxx)
+  ) throws JsonProcessingException {
     String tempId = "multi:" + java.util.UUID.randomUUID();
 
-    // 방 생성시 createGame(게임 시작 해버리는 문제 해결)
-    // gameService.createGame(tempId, difficulty);
-
-    // Redis에 6자리 참여 코드와 매핑 저장
-    String roomCode = roomService.generateRoomCode(tempId, difficulty);
+    // 🎯 방 생성 시 유저 ID를 같이 넘김
+    String roomCode = roomService.generateRoomCode(tempId, difficulty, userId);
 
     return ResponseEntity.ok(Map.of(
         "roomCode", roomCode,
-        "gameId", tempId
+        "gameId", tempId,
+        "isHost", true
     ));
   }
 
   // 🎯 2. 참여 코드로 방 정보 조회 (Guest)
   @GetMapping("/join/{code}")
-  public ResponseEntity<Map<String, Object>> joinRoom(@PathVariable String code) {
+  public ResponseEntity<Map<String, Object>> joinRoom(@PathVariable String code, @RequestParam String userId) {
     try {
-      Map<String, Object> data = roomService.joinRoomByCode(code);
+      Map<String, Object> data = roomService.joinRoomByCode(code, userId);
       return ResponseEntity.ok(data);
     } catch (IllegalArgumentException e) {
       return ResponseEntity.notFound().build();
@@ -56,6 +56,32 @@ public class RoomController {
   ) throws JsonProcessingException {
     List<Map<String, Object>> rooms = roomService.getFilteredRooms(difficulty);
     return ResponseEntity.ok(rooms);
+  }
+
+  @GetMapping("/waiting/{code}") // 🎯 대기실 전용 조회 API 추가
+  public ResponseEntity<Map<String, Object>> getWaitingRoomInfo(
+      @PathVariable String code,
+      @AuthenticationPrincipal String email // 현재 요청자가 누군지 확인
+  ) {
+    // 1. Redis에서 방 코드로 방 정보 조회
+    Map<String, Object> roomData = roomService.getRoomInfoOnly(code.toUpperCase());
+
+    if (roomData == null) {
+      return ResponseEntity.notFound().build();
+    }
+
+    // 2. 🎯 [핵심] 현재 요청자가 이 방의 방장(Host)인지 판별해서 추가
+    // (Redis에 저장된 호스트 ID와 현재 유저 ID/익명ID 비교)
+    boolean isHost = roomService.isHost(code, email);
+    roomData.put("isHost", isHost);
+
+    return ResponseEntity.ok(roomData);
+  }
+
+  // 🎯 대기실 정보 단순 조회 (인원수 유지, 새로고침용)
+  @GetMapping("/info/{code}")
+  public ResponseEntity<?> getRoomInfo(@PathVariable String code) {
+    return ResponseEntity.ok(roomService.getRoomInfoOnly(code));
   }
 
 

@@ -18,47 +18,54 @@ import org.springframework.stereotype.Service;
 public class RoomService {
   private final StringRedisTemplate redisTemplate;
   private static final String ROOM_CODE_PREFIX = "room:code:"; // 코드 -> gameId
-  private static final String ROOM_USER_COUNT = "room:count:"; // gameId -> 현재 인원수
+  private static final String ROOM_USERS_SET = "room:users:"; // 🎯 Key: room:users:{gameId} (Set 구조)
 
   private final ObjectMapper objectMapper; // JSON 변환용 Jackson
 
-  public String generateRoomCode(String gameId, int difficulty) throws JsonProcessingException {
+  public String generateRoomCode(String gameId, int difficulty, String hostId) throws JsonProcessingException {
     String code = createRandomCode();
 
     // 방 정보 객체 생성 (난이도 포함)
     Map<String, Object> roomData = new HashMap<>();
     roomData.put("gameId", gameId);
     roomData.put("difficulty", difficulty);
+    roomData.put("hostId", hostId); // 👈 [추가] 방장 식별자 저장
     roomData.put("createdAt", System.currentTimeMillis());
 
     String json = objectMapper.writeValueAsString(roomData);
 
     // Redis 저장 (코드 -> 상세 정보 JSON)
     redisTemplate.opsForValue().set(ROOM_CODE_PREFIX + code, json, 24, TimeUnit.HOURS);
-    redisTemplate.opsForValue().set(ROOM_USER_COUNT + gameId, "1", 24, TimeUnit.HOURS);
+    // 🎯 [수정] 숫자를 1로 세팅하는 대신 Set에 호스트 ID를 추가
+    redisTemplate.opsForSet().add(ROOM_USERS_SET + gameId, hostId);
 
     return code;
   }
 
   public List<Map<String, Object>> getFilteredRooms(Integer difficulty) throws JsonProcessingException {
     List<Map<String, Object>> rooms = new ArrayList<>();
+    // 1. room:code:* 패턴의 키들을 가져옴
     Set<String> keys = redisTemplate.keys(ROOM_CODE_PREFIX + "*");
 
     if (keys != null) {
       for (String key : keys) {
         String json = redisTemplate.opsForValue().get(key);
-        Map<String, Object> data = objectMapper.readValue(json, Map.class);
+        if (json == null) continue;
 
+        Map<String, Object> data = objectMapper.readValue(json, Map.class);
         int roomDiff = (int) data.get("difficulty");
 
-        // 🎯 필터 조건 체크: 난이도가 null이거나 일치할 때만 담기
+        // 🎯 난이도 필터링
         if (difficulty == null || roomDiff == difficulty) {
           String code = key.replace(ROOM_CODE_PREFIX, "");
           String gameId = (String) data.get("gameId");
-          String count = redisTemplate.opsForValue().get(ROOM_USER_COUNT + gameId);
+
+          // 🎯 [변경] increment 방식의 키가 아니라 Set의 size(SCARD)를 가져옴
+          Long count = redisTemplate.opsForSet().size(ROOM_USERS_SET + gameId);
 
           data.put("roomCode", code);
-          data.put("currentPlayers", count != null ? Integer.parseInt(count) : 0);
+          // 🎯 인원수가 null이면 0으로 처리
+          data.put("currentPlayers", count != null ? count.intValue() : 0);
           rooms.add(data);
         }
       }
@@ -66,26 +73,32 @@ public class RoomService {
     return rooms;
   }
 
-  public Map<String, Object> joinRoomByCode(String code) {
+  // 2. 방 참여 시 (중복 체크 및 인원 제한)
+  public Map<String, Object> joinRoomByCode(String code, String userId) {
     String json = redisTemplate.opsForValue().get(ROOM_CODE_PREFIX + code.toUpperCase());
     if (json == null) throw new RuntimeException("존재하지 않는 방 코드입니다.");
 
     try {
-      // 🎯 JSON 전체를 Map으로 파싱 (gameId, difficulty 다 들어있음)
       Map<String, Object> data = objectMapper.readValue(json, Map.class);
       String gameId = (String) data.get("gameId");
+      String userSetKey = ROOM_USERS_SET + gameId;
 
-      // 인원 체크 로직
-      Long count = redisTemplate.opsForValue().increment(ROOM_USER_COUNT + gameId);
+      // 🎯 [핵심] SADD는 이미 있으면 0을 반환함. 중복 입장이면 숫자가 늘어나지 않음.
+      redisTemplate.opsForSet().add(userSetKey, userId);
+
+      // 🎯 실제 유니크한 인원수 확인
+      Long count = redisTemplate.opsForSet().size(userSetKey);
+
       if (count != null && count > 2) {
-        redisTemplate.opsForValue().decrement(ROOM_USER_COUNT + gameId);
+        // 3명째라면 방금 추가한 유저를 다시 제거하고 튕김
+        redisTemplate.opsForSet().remove(userSetKey, userId);
         throw new RuntimeException("방이 가득 찼습니다.");
       }
 
-      // 🎯 gameId랑 difficulty 둘 다 담아서 리턴
       Map<String, Object> result = new HashMap<>();
       result.put("gameId", gameId);
       result.put("difficulty", data.get("difficulty"));
+      result.put("currentPlayers", count);
       return result;
 
     } catch (JsonProcessingException e) {
@@ -120,17 +133,18 @@ public class RoomService {
     return rooms;
   }
 
-  public void leaveRoom(String gameId, String roomCode) {
-    // 1. 인원 감소
-    Long count = redisTemplate.opsForValue().decrement(ROOM_USER_COUNT + gameId);
+  // 3. 방 나가기 시 (Set에서 유저 제거)
+  public void leaveRoom(String gameId, String roomCode, String userId) {
+    String userSetKey = ROOM_USERS_SET + gameId;
+    redisTemplate.opsForSet().remove(userSetKey, userId);
 
-    // 2. 🎯 인원이 0명이거나 음수면 방 폭파 (자원 정리)
+    Long count = redisTemplate.opsForSet().size(userSetKey);
+
     if (count == null || count <= 0) {
-      redisTemplate.delete(ROOM_USER_COUNT + gameId);
+      redisTemplate.delete(userSetKey);
       if (roomCode != null) {
         redisTemplate.delete(ROOM_CODE_PREFIX + roomCode.toUpperCase());
       }
-      // 필요하다면 여기서 gameService.deleteGame(gameId) 호출해서 게임판도 삭제
     }
   }
 
@@ -145,6 +159,37 @@ public class RoomService {
       String updatedJson = objectMapper.writeValueAsString(data);
       // Redis 덮어쓰기 (기존 만료시간 유지하려면 getExpire 확인 후 세팅)
       redisTemplate.opsForValue().set(key, updatedJson, 24, TimeUnit.HOURS);
+    }
+  }
+
+  // 4. 정보 조회 시 (Set 크기 반환)
+  public Map<String, Object> getRoomInfoOnly(String code) {
+    String json = redisTemplate.opsForValue().get(ROOM_CODE_PREFIX + code.toUpperCase());
+    if (json == null) throw new RuntimeException("존재하지 않는 방입니다.");
+
+    try {
+      Map<String, Object> data = objectMapper.readValue(json, Map.class);
+      String gameId = (String) data.get("gameId");
+
+      // 🎯 Set의 크기가 곧 현재 인원수
+      Long count = redisTemplate.opsForSet().size(ROOM_USERS_SET + gameId);
+
+      data.put("roomCode", code.toUpperCase());
+      data.put("currentPlayers", count != null ? count : 0);
+      return data;
+    } catch (JsonProcessingException e) {
+      throw new RuntimeException("방 정보 파싱 실패");
+    }
+  }
+
+  // 🎯 2. 방장 여부 판별 (익명/로그인 통합)
+  public boolean isHost(String code, String currentUserId) {
+    try {
+      Map<String, Object> room = getRoomInfoOnly(code);
+      String hostId = (String) room.get("hostId");
+      return hostId != null && hostId.equals(currentUserId);
+    } catch (Exception e) {
+      return false;
     }
   }
 }

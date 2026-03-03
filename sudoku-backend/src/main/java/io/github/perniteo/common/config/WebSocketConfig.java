@@ -45,7 +45,14 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
               }
 
               String roomCode = servletRequest.getParameter("roomCode");
-              attributes.put("roomCode", roomCode);
+              String userId = servletRequest.getParameter("userId");
+
+              // 🎯 [핵심 수정] ConcurrentHashMap은 null을 넣으면 즉시 NPE를 던집니다.
+              // null이 아닐 때만 put 하도록 확실히 막으세요.
+              if (roomCode != null) attributes.put("roomCode", roomCode);
+              if (userId != null) attributes.put("userId", userId);
+
+              System.out.println("✅ [WS Handshake] Attributes stored safely");
             }
             return true;
           }

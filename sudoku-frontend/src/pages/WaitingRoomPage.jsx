@@ -1,80 +1,160 @@
-import React, { useState, useEffect, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import WaitingRoom from "../components/WaitingRoom";
-import { GameService } from "../services/GameService";
-import { createMultiplayerClient } from "../services/socketService";
+import api from "../api";
+import SockJS from "sockjs-client";
+import { Client } from "@stomp/stompjs";
 
 function WaitingRoomPage({ myId, token }) {
-  const { roomCode } = useParams(); // 🎯 URL 주소창의 /waiting/:roomCode 추출
   const navigate = useNavigate();
+  const location = useLocation();
+  const { roomCode: urlRoomCode } = useParams();
 
-  // 1. App.js에서 이사 온 대기실 전용 상태들
-  const [roomInfo, setRoomInfo] = useState(null);
+  // 1. 상태 정의 (location.state 우선 활용)
+  const [roomInfo, setRoomInfo] = useState(location.state || null);
   const [chatMessages, setChatMessages] = useState([]);
+
   const stompClientRef = useRef(null);
+  const isConnecting = useRef(false);
+  const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:8080";
 
-  // 🎯 2. 새로고침/최초 진입 시 방 정보 동기화 및 소켓 연결
+  // 🎯 2. 멀티플레이 소켓 연결 함수 (보강됨)
+  const connectMultiplayer = useCallback(
+    (gId, rCode) => {
+      // 이미 활성화된 소켓이 있다면 중단
+      if (stompClientRef.current?.active) {
+        console.log("⚠️ 이미 활성화된 소켓이 있어 연결을 건너뜁니다.");
+        return;
+      }
+
+      // 기존에 inactive된 소켓이 있다면 확실히 제거
+      if (stompClientRef.current) {
+        stompClientRef.current.deactivate();
+        stompClientRef.current = null;
+      }
+
+      const socket = new SockJS(
+        `${API_BASE_URL}/ws-stomp?gameId=${gId}&roomCode=${rCode}&userId=${myId}`,
+      );
+
+      const client = new Client({
+        webSocketFactory: () => socket,
+        debug: (str) => console.log("🚀 STOMP:", str),
+        reconnectDelay: 5000,
+        heartbeatIncoming: 4000,
+        heartbeatOutgoing: 4000,
+        onConnect: () => {
+          console.log(`✅ 대기실 연결 성공 (Room: ${rCode})`);
+          isConnecting.current = false; // 연결 성공 시에만 해제
+
+          client.subscribe(`/topic/game/${gId}`, (msg) => {
+            const data = JSON.parse(msg.body);
+            if (data.status === "PLAYING") navigate(`/game/${gId}`);
+          });
+
+          client.subscribe(`/topic/game/${gId}/chat`, (msg) => {
+            setChatMessages((prev) => [...prev, JSON.parse(msg.body)]);
+          });
+
+          client.subscribe(`/topic/game/${gId}/settings`, (msg) => {
+            const settings = JSON.parse(msg.body);
+            setRoomInfo((prev) => ({
+              ...prev,
+              difficulty: settings.difficulty,
+            }));
+          });
+
+          client.subscribe(`/topic/game/${gId}/errors`, (msg) => {
+            alert("❌ 에러: " + JSON.parse(msg.body).message);
+          });
+        },
+        onStompError: (frame) => {
+          isConnecting.current = false;
+          console.error("❌ STOMP 에러:", frame);
+        },
+        onDisconnect: () => {
+          isConnecting.current = false;
+          console.log("🔌 소켓 연결 종료");
+        },
+      });
+
+      client.activate();
+      stompClientRef.current = client;
+    },
+    [myId, navigate, API_BASE_URL],
+  );
+
+  // 🎯 3. 데이터 로드 및 소켓 기동 통합 로직 (핵심 수정!)
   useEffect(() => {
-    const initWaitingRoom = async () => {
-      try {
-        // 방 정보 가져오기 (기존의 checkRecentGame이나 전용 API 활용)
-        const res = await GameService.checkRecentGame(token, roomCode);
-        setRoomInfo(res.data.roomInfo || res.data); // 서버 구조에 맞게 세팅
+    const initRoom = async () => {
+      // 💡 핵심: 함수 실행되자마자 즉시 flag 체크 및 설정
+      if (isConnecting.current) return;
 
-        // 🎯 소켓 연결 (대기실 전용 주소나 게임 주소 구독)
-        stompClientRef.current = createMultiplayerClient(roomCode, {
-          onMessage: (data) => {
-            // 게임 시작 신호가 오면 주소 이동
-            if (data.status === "PLAYING") {
-              navigate(`/game/${roomCode}`);
-            }
-          },
-          onChat: (chat) => setChatMessages((prev) => [...prev, chat]),
-          onSettings: (settings) =>
-            setRoomInfo((prev) => ({ ...prev, ...settings })),
-          onError: (err) => alert(err.message),
-        });
+      // Case 1: 이미 데이터가 있는 경우 (Home에서 이동)
+      if (roomInfo?.gameId && roomInfo?.roomCode) {
+        isConnecting.current = true; // 소켓 연결 시도 전 즉시 점유
+        connectMultiplayer(roomInfo.gameId, roomInfo.roomCode);
+        return;
+      }
+
+      // Case 2: 새로고침 등으로 데이터가 없는 경우
+      if (!urlRoomCode) return;
+
+      try {
+        isConnecting.current = true; // API 요청 시작 전 즉시 점유
+        const res = await api.get(
+          `/rooms/join/${urlRoomCode.toUpperCase()}?userId=${myId}`,
+        );
+        const data = { ...res.data, roomCode: urlRoomCode.toUpperCase() };
+        setRoomInfo(data);
+
+        // 여기서 isConnecting을 false로 풀지 않고 바로 소켓 함수로 넘김
+        connectMultiplayer(data.gameId, data.roomCode);
       } catch (err) {
-        console.error("대기실 로드 실패:", err);
+        isConnecting.current = false; // 에러 시에만 풀어줌
+        console.error("입장 실패:", err);
         navigate("/");
       }
     };
 
-    initWaitingRoom();
+    if (myId) initRoom();
 
     return () => {
-      if (stompClientRef.current) stompClientRef.current.deactivate();
+      if (stompClientRef.current) {
+        stompClientRef.current.deactivate();
+        stompClientRef.current = null;
+      }
+      isConnecting.current = false;
     };
-  }, [roomCode, token, navigate]);
+  }, [myId, urlRoomCode, connectMultiplayer, navigate]);
+  // 💡 의존성 배열에서 roomInfo를 반드시 제거하세요!
 
-  // 3. 채팅 전송 핸들러
+  // 🎯 4. 메시지 전송 핸들러
   const sendChat = (content) => {
-    if (stompClientRef.current?.connected) {
-      stompClientRef.current.publish({
-        destination: `/multi/game/${roomCode}/chat`,
-        body: JSON.stringify({ sender: myId, content }),
-      });
-    }
+    if (!stompClientRef.current?.connected || !roomInfo?.gameId) return;
+    stompClientRef.current.publish({
+      destination: `/multi/game/${roomInfo.gameId}/chat`,
+      body: JSON.stringify({ sender: token ? "나" : "익명", content }),
+    });
   };
 
-  // 4. 난이도 변경 (방장 전용)
   const updateDifficulty = (newDiff) => {
-    if (stompClientRef.current?.connected) {
-      stompClientRef.current.publish({
-        destination: `/multi/game/${roomCode}/settings`,
-        body: JSON.stringify({ difficulty: newDiff, roomCode }),
-      });
-    }
+    if (!roomInfo?.isHost || !stompClientRef.current?.connected) return;
+    stompClientRef.current.publish({
+      destination: `/multi/game/${roomInfo.gameId}/settings`,
+      body: JSON.stringify({
+        difficulty: newDiff,
+        roomCode: roomInfo.roomCode,
+      }),
+    });
   };
 
-  // 5. 게임 시작 (방장 전용)
   const startMultiGame = () => {
-    if (stompClientRef.current?.connected) {
-      stompClientRef.current.publish({
-        destination: `/multi/game/${roomCode}/start`,
-        body: JSON.stringify({ difficulty: roomInfo.difficulty }),
-      });
-    }
+    if (!roomInfo?.isHost || !stompClientRef.current?.connected) return;
+    stompClientRef.current.publish({
+      destination: `/multi/game/${roomInfo.gameId}/start`,
+      body: JSON.stringify({ difficulty: roomInfo.difficulty }),
+    });
   };
 
   if (!roomInfo) return <div>대기실 로딩 중...</div>;
@@ -85,7 +165,7 @@ function WaitingRoomPage({ myId, token }) {
       chatMessages={chatMessages}
       onSendMessage={sendChat}
       onUpdateDifficulty={updateDifficulty}
-      onCancel={() => navigate("/")} // 🎯 메뉴로 이동
+      onCancel={() => navigate("/")}
       onStartGame={startMultiGame}
       isHost={roomInfo.isHost}
     />

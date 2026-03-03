@@ -36,7 +36,7 @@ public class SudokuController {
   @PostMapping({"/start", "/start/{anonymousId}"}) // 두 경로 모두 허용
   public GameStartResponse startGame(
       @AuthenticationPrincipal String email, // String에서 Object로 변경 (익명 유저 대응)
-      @PathVariable(required = false) String id,
+      @PathVariable(value = "anonymousId", required = false) String id,
       @RequestBody GameStartRequest request) throws JsonProcessingException {
     // 1. 식별자 결정 (우선순위: 로그인 이메일 > 전달받은 익명 ID > 신규 생성)
     String finalId;

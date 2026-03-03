@@ -1,10 +1,25 @@
 import React from "react";
+import { AuthService } from "../services/AuthService"; // 🎯 서비스 직접 임포트
 
-const Header = ({ token, onLoginClick, onLogout, onShowRecords }) => {
+const Header = ({ token, setToken, onLoginClick, onShowRecords }) => {
+  // 🎯 로그아웃 로직 분리
+  const handleLogout = async () => {
+    try {
+      await AuthService.signOut(); // 서버에 쿠키 삭제 요청
+      setToken(null); // 상위 토큰 상태 비우기
+      localStorage.removeItem("accessToken");
+      alert("로그아웃 되었습니다.");
+    } catch (err) {
+      console.error("로그아웃 실패:", err);
+      // 에러가 나도 유저 입장에선 로그아웃 된 것처럼 보이게 처리
+      setToken(null);
+      localStorage.removeItem("accessToken");
+    }
+  };
+
   return (
     <div style={styles.headerContainer}>
       <h2 style={styles.logo}>SUDOKU</h2>
-
       <div style={styles.buttonGroup}>
         {!token ? (
           <button onClick={onLoginClick} style={styles.loginBtn}>
@@ -12,12 +27,12 @@ const Header = ({ token, onLoginClick, onLogout, onShowRecords }) => {
           </button>
         ) : (
           <div style={styles.userInfo}>
-            {/* 🎯 기록실 진입 버튼 추가 */}
             <button onClick={onShowRecords} style={styles.recordBtn}>
               📊 내 기록
             </button>
             <span style={styles.userText}>ONLINE</span>
-            <button onClick={onLogout} style={styles.logoutBtn}>
+            {/* 🎯 아까 만든 handleLogout 연결 */}
+            <button onClick={handleLogout} style={styles.logoutBtn}>
               로그아웃
             </button>
           </div>

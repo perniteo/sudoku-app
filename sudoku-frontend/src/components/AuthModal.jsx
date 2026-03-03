@@ -1,15 +1,15 @@
 import React, { useState } from "react";
+import { AuthService } from "../services/AuthService";
 
 const AuthModal = ({
   show,
+  onClose,
   isLoginView,
   setIsLoginView,
   game,
-  setViewMode,
-  // onLoginSubmit은 부모로부터 전달받은 성공 후 로직으로 활용
-  onLoginSubmit,
+  onLoginSuccess, // 로그인 성공 시 호출될 콜백 (setToken 등)
 }) => {
-  // 1. 입력 데이터를 담을 상태 (닉네임 포함)
+  // 1. 입력 데이터를 담을 상태
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -19,28 +19,62 @@ const AuthModal = ({
 
   if (!show) return null;
 
-  // 2. 입력값이 바뀔 때마다 상태 업데이트
+  // 2. 입력값 업데이트
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  // 3. Spring Boot API 호출 함수
-  const handleAuthAction = (e) => {
+  // 3. 인증 로직 실행
+  const handleAuthAction = async (e) => {
     if (e) {
       e.preventDefault();
       e.stopPropagation();
     }
 
-    // 직접 fetch 하지 말고 부모(App.js)가 준 함수에 데이터만 배달
-    // 순서: isLoginView, email, password, nickname
-    onLoginSubmit(
-      isLoginView,
-      formData.email,
-      formData.password,
-      formData.nickname,
-    );
+    try {
+      if (isLoginView) {
+        // --- 로그인 모드 ---
+        const data = await AuthService.signIn(
+          formData.email,
+          formData.password,
+        );
+
+        // 성공 시 처리
+        localStorage.setItem("accessToken", data.accessToken);
+        onLoginSuccess(data.accessToken, data.email); // 상위 컴포넌트에 토큰과 이메일 전달
+        onClose(); // 모달 닫기
+        alert("로그인되었습니다!");
+      } else {
+        // --- 회원가입 모드 ---
+        // 프론트엔드 자체 검증
+        if (formData.password !== formData.confirmPassword) {
+          return alert("비밀번호가 일치하지 않습니다.");
+        }
+        if (!formData.nickname) {
+          return alert("닉네임을 입력해주세요.");
+        }
+
+        await AuthService.signUp(
+          formData.email,
+          formData.password,
+          formData.nickname,
+        );
+
+        alert("회원가입 완료! 이제 로그인해주세요.");
+        setIsLoginView(true); // 로그인 화면으로 전환
+        // 가입 정보 초기화 (선택 사항)
+        setFormData({ ...formData, password: "", confirmPassword: "" });
+      }
+    } catch (err) {
+      console.error("인증 에러:", err);
+      // 서버에서 온 에러 메시지가 있으면 노출, 없으면 기본 메시지
+      const errMsg =
+        err.response?.data?.message || err.response?.data || "인증 실패";
+      alert(errMsg);
+    }
   };
+
   return (
     <div style={styles.overlay}>
       <div style={styles.modal}>
@@ -60,7 +94,6 @@ const AuthModal = ({
             style={styles.input}
             onChange={handleChange}
           />
-          {/* 닉네임은 회원가입일 때만 노출 */}
           {!isLoginView && (
             <input
               name="nickname"
@@ -112,10 +145,7 @@ const AuthModal = ({
           )}
         </div>
 
-        <button
-          onClick={() => setViewMode(game ? "game" : "menu")}
-          style={styles.closeBtn}
-        >
+        <button onClick={onClose} style={styles.closeBtn}>
           나중에 하기
         </button>
       </div>

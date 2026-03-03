@@ -12,6 +12,7 @@ function GamePage({ myId, token }) {
   const { gameId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const { gameId: urlGameId } = useParams();
 
   // 1. 상태 정의
   const [game, setGame] = useState(null);
@@ -27,6 +28,19 @@ function GamePage({ myId, token }) {
   const stompClientRef = useRef(null);
   const timerRef = useRef(null);
   const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:8080";
+
+  // 🎯 1. 실시간 ID 결정 (렌더링될 때마다 최신 myId 반영)
+  // 토큰이 있고 myId가 user:로 시작하면 myId를 쓰고, 아니면 URL ID를 씁니다.
+  const currentEffectiveId =
+    token && myId && myId.startsWith("user:") ? myId : urlGameId;
+
+  // 🎯 2. 중복 Prefix 방어 (백엔드 500 에러 해결)
+  const cleanId = currentEffectiveId.startsWith("sudoku:")
+    ? currentEffectiveId.replace("sudoku:", "")
+    : currentEffectiveId;
+
+  // 디버깅용 로그: 로그인 시점에 이게 user:test@naver.com으로 바뀌는지 확인하세요.
+  console.log("🆔 현재 식별자 감시:", { token: !!token, myId, cleanId });
 
   // 2. 시간 포맷
   const formatTime = (totalSeconds) => {
@@ -139,13 +153,23 @@ function GamePage({ myId, token }) {
     return () => clearInterval(timerRef.current);
   }, [game?.status, viewMode, gameId]);
 
-  // 6. 입력 핸들러 (싱글/멀티 분기)
+  // 6. 입력 핸들러 (싱글/멀티 분기 및 로그인 식별자 교정)
   const handleInput = useCallback(
     async (row, col, value) => {
       if (!game || isPlacing || viewMode === "pause") return;
 
+      // 🎯 [핵심 로직] 식별자 결정 우선순위
+      // 1. 로그인 토큰이 있고 myId가 user:로 시작하면 무조건 myId 사용
+      // 2. 그 외에는 URL 파라미터인 gameId 사용
+      const effectiveId = token && myId.startsWith("user:") ? myId : gameId;
+
+      // 🎯 [중복 Prefix 방어] 백엔드에서 sudoku: 를 중복으로 붙여 500 에러나는 것 방지
+      const cleanId = effectiveId.startsWith("sudoku:")
+        ? effectiveId.replace("sudoku:", "")
+        : effectiveId;
+
       if (gameId.startsWith("multi:")) {
-        // 💡 [검증] 소켓이 연결된 상태인지 확인
+        // --- 멀티플레이 로직 ---
         if (!stompClientRef.current?.connected) {
           console.warn("⚠️ 소켓이 아직 연결되지 않았습니다.");
           return;
@@ -153,34 +177,43 @@ function GamePage({ myId, token }) {
 
         const path = isNoteMode ? "memo" : "place";
 
-        // 💡 [발송] 서버로 입력 정보 전송 (서버가 이걸 받고 다시 /topic/game/ID로 뿌려줌)
+        // 💡 [발송] 서버로 입력 정보 전송
         stompClientRef.current.publish({
           destination: `/multi/game/${gameId}/${path}`,
           body: JSON.stringify({
             row,
             col,
             value,
-            elapsedTime: seconds, // 현재 클라이언트 시간 전송
-            userId: myId,
+            elapsedTime: seconds,
+            userId: myId, // 실제 행위자 ID
           }),
         });
         console.log(
-          `📤 [${path}] 전송 시도 - 값: ${value}, 모드: ${isNoteMode}`,
+          `📤 [멀티:${path}] 전송 - ID: ${effectiveId}, 값: ${value}`,
         );
       } else {
-        // 싱글플레이 로직 (기존 유지)
+        // --- 싱글플레이 로직 ---
         setIsPlacing(true);
         try {
+          // 🎯 이제 anon: 대신 정확한 user:email 경로로 API를 호출합니다.
           const res = isNoteMode
-            ? await GameService.toggleMemo(gameId, row, col, value)
-            : await GameService.placeNumber(gameId, row, col, value, seconds);
+            ? await GameService.toggleMemo(cleanId, row, col, value)
+            : await GameService.placeNumber(cleanId, row, col, value, seconds);
+
           setGame((prev) => ({ ...prev, ...res.data }));
+          console.log(
+            `✅ [싱글:${isNoteMode ? "메모" : "입력"}] 성공 - ID: ${cleanId}`,
+          );
+        } catch (err) {
+          console.error("❌ 입력 실패:", err);
+          // 401 에러 등이 나면 api.js 인터셉터가 처리함
         } finally {
           setIsPlacing(false);
         }
       }
     },
-    [game, gameId, isNoteMode, isPlacing, seconds, myId, viewMode],
+    // 🎯 의존성 배열에 token과 myId를 추가하여 로그인 전환 시 함수가 갱신되게 함
+    [game, gameId, isNoteMode, isPlacing, seconds, myId, token, viewMode],
   );
 
   // 7. 채팅 전송 핸들러 (멀티플레이 전용)

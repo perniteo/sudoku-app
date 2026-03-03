@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   BrowserRouter as Router,
   Routes,
@@ -31,8 +31,14 @@ function App() {
     [token, user, anonymousId],
   );
 
+  useEffect(() => {
+    console.log("📢 App.js에서 감시중인 myId:", myId);
+  }, [myId]); // myId가 바뀔 때마다 실행
+
   // 인증 모달 상태 (로그인 전용)
   const [showAuth, setShowAuth] = useState(false);
+  const [isLoginView, setIsLoginView] = useState(true); // 로그인(true) / 회원가입(false) 전환
+  const [game, setGame] = useState(null); // 게임 결과 저장용 (선택사항)
 
   // --- Render (네 원본 UI & Props 100% 복구) ---
   return (
@@ -41,6 +47,7 @@ function App() {
         {/* 공통 헤더 */}
         <Header
           token={token}
+          setToken={setToken} // 🎯 로그아웃 시 토큰 상태 업데이트 위해 setToken 전달
           onLoginClick={() => setShowAuth(true)}
           onLogout={() => {
             setToken(null);
@@ -82,8 +89,21 @@ function App() {
         <AuthModal
           show={showAuth}
           onClose={() => setShowAuth(false)}
-          setToken={setToken}
-          setUser={setUser}
+          isLoginView={isLoginView}
+          setIsLoginView={setIsLoginView}
+          // 🎯 로그인 성공 시 실행될 보상 로직만 깔끔하게 전달
+          onLoginSuccess={(newToken, email) => {
+            console.log(
+              "🎉 로그인 성공! 받은 토큰:",
+              newToken,
+              "이메일:",
+              email,
+            );
+            setToken(newToken);
+            setUser({ email: email });
+            setShowAuth(false);
+          }}
+          game={game} // 게임 결과 화면에서 로그인 유도할 때 필요
         />
       </div>
     </Router>

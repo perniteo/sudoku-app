@@ -69,7 +69,7 @@ public class AuthService {
         TimeUnit.DAYS
     );
 
-    return new TokenResponse(accessToken, refreshToken);
+    return new TokenResponse(accessToken, refreshToken, user.getEmail(), user.getNickname());
   }
 
   public void signOut(String email) {
@@ -92,10 +92,17 @@ public class AuthService {
       throw new AuthException("로그인 정보가 일치하지 않거나 만료되었습니다.");
     }
 
+    // 추가
+
+    User user = userRepository.findByEmail(email)
+        .orElseThrow(() -> new AuthException("존재하기 않는 사용자입니다."));
+
     // 4. 새 토큰 2종 발급 (Rotation 전략 - 둘 다 새로 발급)
     TokenResponse newTokens = new TokenResponse(
         jwtProvider.createAccessToken(email),
-        jwtProvider.createRefreshToken(email)
+        jwtProvider.createRefreshToken(email),
+        user.getEmail(),
+        user.getNickname()
     );
 
     // 5. Redis 갱신 (새로운 리프레시 토큰으로 교체)

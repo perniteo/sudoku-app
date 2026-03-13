@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React from "react";
+import ChatWindow from "./ChatWindow"; // 🎯 공통 컴포넌트 임포트
 
 const WaitingRoom = ({
   roomInfo,
@@ -8,15 +9,8 @@ const WaitingRoom = ({
   onCancel,
   onStartGame,
   isHost,
+  myId, // 🎯 부모로부터 받은 내 ID 추가 (구분용)
 }) => {
-  const [chatInput, setChatInput] = useState("");
-
-  const handleSend = () => {
-    if (!chatInput.trim()) return;
-    onSendMessage(chatInput);
-    setChatInput("");
-  };
-
   return (
     <div style={styles.container}>
       <div style={styles.header}>
@@ -52,7 +46,6 @@ const WaitingRoom = ({
               : "⏳ 방장이 난이도를 조절 중입니다."}
           </p>
 
-          {/* 🎯 방장 전용 시작 버튼 추가 */}
           {isHost && (
             <button onClick={onStartGame} style={styles.startBtn}>
               🎮 GAME START
@@ -67,41 +60,29 @@ const WaitingRoom = ({
           </button>
         </div>
 
-        {/* 오른쪽: 실시간 채팅 구역 */}
+        {/* 오른쪽: 공통 채팅 컴포넌트로 교체 ⭐ */}
         <div style={styles.chatSection}>
-          <h4 style={styles.subTitle}>CHAT</h4>
-          <div style={styles.chatBox}>
-            {chatMessages.map((msg, i) => (
-              <div key={i} style={styles.chatMsg}>
-                <span style={styles.sender}>{msg.sender}:</span> {msg.content}
-              </div>
-            ))}
-          </div>
-          <div style={styles.inputGroup}>
-            <input
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSend()}
-              placeholder="메시지 입력..."
-              style={styles.input}
-            />
-            <button onClick={handleSend} style={styles.sendBtn}>
-              전송
-            </button>
-          </div>
+          <ChatWindow
+            messages={chatMessages}
+            onSendMessage={onSendMessage}
+            myId={myId}
+            height="350px"
+          />
         </div>
       </div>
     </div>
   );
 };
 
+// ... styles에서 기존 chatBox, input, sendBtn 등 중복 스타일은 삭제해도 됨
 const styles = {
+  // 기존 container, header, mainLayout 등 레이아웃 스타일은 유지
   container: {
     border: "1px solid #ddd",
     padding: "25px",
     borderRadius: "15px",
     backgroundColor: "#fff",
-    maxWidth: "700px",
+    maxWidth: "800px",
     margin: "0 auto",
   },
   header: { textAlign: "center", marginBottom: "30px" },
@@ -124,44 +105,18 @@ const styles = {
     paddingTop: "20px",
   },
   settingsSection: { flex: 1, display: "flex", flexDirection: "column" },
-  chatSection: { flex: 1.5, display: "flex", flexDirection: "column" },
+  chatSection: { flex: 1.5 }, // ChatWindow가 내부를 다 채움
   subTitle: { fontSize: "12px", color: "#aaa", marginBottom: "15px" },
-  chatBox: {
-    height: "200px",
-    border: "1px solid #eee",
-    borderRadius: "8px",
-    padding: "10px",
-    overflowY: "auto",
-    marginBottom: "10px",
-    backgroundColor: "#fafafa",
-  },
-  inputGroup: { display: "flex", gap: "5px" },
-  input: {
-    flex: 1,
-    padding: "8px",
-    borderRadius: "5px",
-    border: "1px solid #ddd",
-  },
-  sendBtn: {
-    padding: "8px 15px",
-    backgroundColor: "#673AB7",
-    color: "#fff",
-    border: "none",
-    borderRadius: "5px",
-    cursor: "pointer",
-  },
-  // 🎯 새로 추가된 시작 버튼 스타일
   startBtn: {
     marginTop: "20px",
     padding: "15px",
     backgroundColor: "#4CAF50",
-    color: "#white",
+    color: "#fff",
     border: "none",
     borderRadius: "8px",
     fontSize: "16px",
     fontWeight: "bold",
     cursor: "pointer",
-    transition: "background 0.2s",
   },
   cancelBtn: {
     marginTop: "30px",
@@ -173,7 +128,6 @@ const styles = {
     borderRadius: "6px",
     cursor: "pointer",
   },
-  // 방장일 때 나가는 버튼은 조금 작게 아래로
   cancelBtnSmall: {
     marginTop: "10px",
     width: "100%",
@@ -191,23 +145,8 @@ const styles = {
     marginTop: "10px",
     lineHeight: "1.4",
   },
-  row: {
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-  },
-  select: {
-    padding: "5px",
-    borderRadius: "4px",
-  },
-  chatMsg: {
-    marginBottom: "5px",
-    fontSize: "14px",
-  },
-  sender: {
-    fontWeight: "bold",
-    marginRight: "5px",
-  },
+  row: { display: "flex", alignItems: "center", gap: "10px" },
+  select: { padding: "5px", borderRadius: "4px" },
 };
 
 export default WaitingRoom;

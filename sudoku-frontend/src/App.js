@@ -11,9 +11,9 @@ import Home from "./pages/Home";
 import GamePage from "./pages/GamePage";
 import WaitingRoomPage from "./pages/WaitingRoomPage";
 import Lobby from "./pages/Lobby";
+import RecordsPage from "./pages/RecordsPage"; // 🎯 추가
 
 function App() {
-  // 1. 전역 공통 상태만 남깁니다. (로그인, 익명ID)
   const [token, setToken] = useState(
     localStorage.getItem("accessToken") || null,
   );
@@ -31,24 +31,40 @@ function App() {
     [token, user, anonymousId],
   );
 
-  useEffect(() => {
-    console.log("📢 App.js에서 감시중인 myId:", myId);
-  }, [myId]); // myId가 바뀔 때마다 실행
-
-  // 인증 모달 상태 (로그인 전용)
   const [showAuth, setShowAuth] = useState(false);
-  const [isLoginView, setIsLoginView] = useState(true); // 로그인(true) / 회원가입(false) 전환
-  const [game, setGame] = useState(null); // 게임 결과 저장용 (선택사항)
+  const [isLoginView, setIsLoginView] = useState(true);
+  const [game, setGame] = useState(null);
 
-  // --- Render (네 원본 UI & Props 100% 복구) ---
+  //
+  useEffect(() => {
+    const handleAuthUpdate = (e) => {
+      const { token: newToken, user: userData } = e.detail;
+      setToken(newToken);
+      setUser(userData); // 🎯 여기서 닉네임이 복구됨!
+    };
+
+    const handleLogout = () => {
+      setToken(null);
+      setUser(null);
+      localStorage.removeItem("accessToken");
+    };
+
+    window.addEventListener("auth_update", handleAuthUpdate);
+    window.addEventListener("auth_logout", handleLogout);
+    return () => {
+      window.removeEventListener("auth_update", handleAuthUpdate);
+      window.removeEventListener("auth_logout", handleLogout);
+    };
+  }, []);
+
   return (
     <Router>
       <div style={{ padding: "20px", maxWidth: "800px", margin: "0 auto" }}>
-        {/* 공통 헤더 */}
         <Header
           token={token}
-          setToken={setToken} // 🎯 로그아웃 시 토큰 상태 업데이트 위해 setToken 전달
+          setToken={setToken}
           onLoginClick={() => setShowAuth(true)}
+          // 🎯 Header 내부로 로그아웃 서비스 로직을 옮겼다면 이 prop은 안 써도 됨
           onLogout={() => {
             setToken(null);
             setUser(null);
@@ -58,30 +74,27 @@ function App() {
 
         <main style={{ marginTop: "20px" }}>
           <Routes>
-            {/* 메인 메뉴 (싱글 시작/이어하기 등) */}
             <Route
               path="/"
               element={
                 <Home token={token} anonymousId={anonymousId} myId={myId} />
               }
             />
-
-            {/* 방 목록 (로비) */}
             <Route path="/lobby" element={<Lobby myId={myId} />} />
-
-            {/* 멀티 대기실 */}
             <Route
               path="/waiting/:roomCode"
-              element={<WaitingRoomPage myId={myId} />}
+              element={
+                <WaitingRoomPage myId={myId} token={token} user={user} />
+              }
             />
-
-            {/* 실제 게임 화면 (주소창에 gameId가 박힘) */}
             <Route
               path="/game/:gameId"
-              element={<GamePage myId={myId} token={token} />}
+              element={<GamePage myId={myId} token={token} user={user} />}
             />
 
-            {/* 잘못된 경로는 홈으로 */}
+            {/* 🎯 1. 기록실 전용 경로 추가 */}
+            <Route path="/records" element={<RecordsPage />} />
+
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </main>
@@ -91,22 +104,16 @@ function App() {
           onClose={() => setShowAuth(false)}
           isLoginView={isLoginView}
           setIsLoginView={setIsLoginView}
-          // 🎯 로그인 성공 시 실행될 보상 로직만 깔끔하게 전달
-          onLoginSuccess={(newToken, email) => {
-            console.log(
-              "🎉 로그인 성공! 받은 토큰:",
-              newToken,
-              "이메일:",
-              email,
-            );
+          onLoginSuccess={(newToken, userData) => {
             setToken(newToken);
-            setUser({ email: email });
+            setUser(userData);
             setShowAuth(false);
           }}
-          game={game} // 게임 결과 화면에서 로그인 유도할 때 필요
+          game={game}
         />
       </div>
     </Router>
   );
 }
+
 export default App;

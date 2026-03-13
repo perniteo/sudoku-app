@@ -28,7 +28,6 @@ public class AuthController {
 
   private final AuthService authService;
 
-
   // POST /api/auth/signup
   @PostMapping("/signup")
   public ResponseEntity<String> signUp(@RequestBody SignUpRequest dto) {
@@ -52,7 +51,8 @@ public class AuthController {
 
     response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
 
-    return ResponseEntity.ok(new TokenResponse(tokens.getAccessToken(), "")); // 바디에는 accessToken
+    return ResponseEntity.ok(
+        new TokenResponse(tokens.getAccessToken(), "", tokens.getEmail(), tokens.getNickname())); // 바디에는 accessToken
   }
 
   @PostMapping("/reissue")
@@ -69,7 +69,7 @@ public class AuthController {
 
     response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
 
-    return ResponseEntity.ok(new TokenResponse(tokens.getAccessToken(), null));
+    return ResponseEntity.ok(new TokenResponse(tokens.getAccessToken(), null, tokens.getEmail(), tokens.getNickname()));
   }
 
   @PostMapping("/sign-out")

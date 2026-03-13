@@ -7,8 +7,9 @@ import NumberPad from "../components/NumberPad";
 import GameOverlay from "../components/GameOverlay";
 import SockJS from "sockjs-client";
 import { Client } from "@stomp/stompjs";
+import ChatWindow from "../components/ChatWindow";
 
-function GamePage({ myId, token }) {
+function GamePage({ myId, token, user }) {
   const { gameId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -40,7 +41,7 @@ function GamePage({ myId, token }) {
     : currentEffectiveId;
 
   // 디버깅용 로그: 로그인 시점에 이게 user:test@naver.com으로 바뀌는지 확인하세요.
-  console.log("🆔 현재 식별자 감시:", { token: !!token, myId, cleanId });
+  // console.log("🆔 현재 식별자 감시:", { token: !!token, myId, cleanId });
 
   // 2. 시간 포맷
   const formatTime = (totalSeconds) => {
@@ -68,8 +69,25 @@ function GamePage({ myId, token }) {
         // (1) 일반 게임판 업데이트
         client.subscribe(`/topic/game/${gameId}`, (msg) => {
           const data = JSON.parse(msg.body);
-          setGame((prev) => ({ ...prev, ...data }));
-          if (data.elapsedTime !== undefined) setSeconds(data.elapsedTime);
+
+          setGame((prev) => {
+            if (!prev || !prev.board) return data;
+
+            // 🎯 [핵심] 서버 보드와 내 메모를 병합
+            const mergedBoard = data.board.map((row, rIdx) =>
+              row.map((cell, cIdx) => ({
+                ...cell,
+                // 서버에서 온 숫자가 0이 아니면 메모를 지우고, 0이면 기존 메모(m) 유지
+                m: cell.v !== 0 ? [] : prev.board[rIdx][cIdx].m || [],
+              })),
+            );
+
+            return {
+              ...prev,
+              ...data,
+              board: mergedBoard, // 👈 메모가 살아있는 새 보드 주입
+            };
+          });
         });
 
         // 🎯 (2) 실시간 메모 수신 (기존 toggleNote 로직 완벽 이식)
@@ -141,13 +159,16 @@ function GamePage({ myId, token }) {
     };
   }, [gameId, token, navigate, connectMultiGame]);
 
-  // 5. 타이머 (싱글플레이 전용 - 멀티는 서버 시간을 따름)
+  // GamePage.jsx 내부
+
+  // 🎯 5. 타이머 제어 (useEffect)
   useEffect(() => {
-    if (
-      game?.status === "PLAYING" &&
-      viewMode === "game" &&
-      !gameId.startsWith("multi:")
-    ) {
+    const isMulti = gameId.startsWith("multi:");
+    // 🎯 멀티라면 오버레이 상관없이 흐르고, 싱글은 오버레이 없을 때만 흐름
+    const shouldRun =
+      game?.status === "PLAYING" && (isMulti || viewMode === "game");
+
+    if (shouldRun) {
       timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
     }
     return () => clearInterval(timerRef.current);
@@ -219,16 +240,35 @@ function GamePage({ myId, token }) {
   // 7. 채팅 전송 핸들러 (멀티플레이 전용)
   const sendChat = (content) => {
     if (!stompClientRef.current?.connected) return;
+
+    // 🎯 보낼 데이터 조립 (백엔드 ChatRequest DTO와 필드명을 맞춰야 함)
+    const chatPayload = {
+      sender:
+        token && user?.nickname ? user.nickname : token ? user?.email : "익명",
+      content: content,
+      userId: myId, // 👈 이게 있어야 ChatWindow가 왼쪽/오른쪽을 나눕니다!
+      timestamp: new Date().toISOString(),
+    };
+
     stompClientRef.current.publish({
       destination: `/multi/game/${gameId}/chat`,
-      body: JSON.stringify({ sender: token ? "나" : "익명", content }),
+      body: JSON.stringify(chatPayload),
     });
+
+    console.log("📤 [채팅 발신]:", chatPayload); // 👈 1. 콘솔로 보낸 데이터 확인
   };
 
   // 8. 키보드 이벤트
   useEffect(() => {
     const handleKeyDown = (e) => {
+      // 🎯 ESC는 일시정지 토글 (게임 중이 아닐 때도 반응)
+      if (e.key === "Escape") {
+        console.log("⌨️ ESC 눌림! 현재 모드:", viewMode);
+        setViewMode((prev) => (prev === "pause" ? "game" : "pause"));
+        return;
+      }
       if (viewMode !== "game") return;
+
       const { row, col } = selectedCell;
       if (e.key >= "1" && e.key <= "9") handleInput(row, col, parseInt(e.key));
       else if (e.key === "Backspace" || e.key === "Delete")
@@ -247,51 +287,124 @@ function GamePage({ myId, token }) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedCell, handleInput, viewMode]);
 
+  // 9. 저장 및 종료 핸들러 (GameOverlay에 전달)
+  const handleSaveAndExit = useCallback(
+    async (currentSeconds) => {
+      if (!game || gameId.startsWith("multi:")) {
+        navigate("/");
+        return;
+      }
+
+      try {
+        // 🎯 서비스에 정의된 인자 순서: (userId, elapsedTime, token)
+        // gameId가 곧 userId 역할을 하므로 그대로 넣어줍니다.
+        await GameService.saveAndExit(gameId, currentSeconds, token);
+
+        console.log("✅ 저장 성공:", currentSeconds);
+        navigate("/");
+      } catch (err) {
+        console.error("❌ 저장 실패:", err);
+        navigate("/");
+      }
+    },
+    [game, gameId, token, navigate],
+  );
+
   if (!game) return <div>로딩 중...</div>;
 
   return (
-    <div style={{ position: "relative" }}>
-      <div style={{ opacity: viewMode === "pause" ? 0.4 : 1 }}>
-        <GameInfo
-          game={game}
-          seconds={seconds}
-          isNoteMode={isNoteMode}
-          onToggleNote={() => setIsNoteMode(!isNoteMode)}
-          onPause={() => setViewMode("pause")}
-          formatTime={formatTime}
-        />
-        <SudokuBoard
-          board={game.board}
-          notes={game.board.map((r) => r.map((c) => Array.from(c.m || [])))}
-          selectedCell={selectedCell}
-          onSelectCell={setSelectedCell}
-          myId={myId}
-        />
-        <NumberPad
-          viewMode={viewMode}
-          isNoteMode={isNoteMode}
-          onInput={(v) => handleInput(selectedCell.row, selectedCell.col, v)}
-          onErase={() => handleInput(selectedCell.row, selectedCell.col, 0)}
-          selectedCell={selectedCell}
-        />
-        {/* 멀티플레이용 채팅 UI가 있다면 여기에 chatMessages와 sendChat 연결 */}
+    <div style={styles.pageWrapper}>
+      {/* 🎯 메인 레이아웃: 멀티플레이 시 채팅창과 보드를 가로로 배치 */}
+      <div style={styles.mainLayout}>
+        {/* 1. 왼쪽: 수도쿠 게임 영역 */}
+        <div
+          style={{
+            ...styles.gameSection,
+            opacity: viewMode === "pause" ? 0.4 : 1,
+          }}
+        >
+          <GameInfo
+            game={game}
+            seconds={seconds}
+            isNoteMode={isNoteMode}
+            onToggleNote={() => setIsNoteMode(!isNoteMode)}
+            onPause={() => setViewMode("pause")}
+            formatTime={formatTime}
+          />
+          <SudokuBoard
+            board={game.board}
+            notes={game.board.map((r) => r.map((c) => Array.from(c.m || [])))}
+            selectedCell={selectedCell}
+            onSelectCell={setSelectedCell}
+            myId={myId}
+          />
+          <NumberPad
+            viewMode={viewMode}
+            isNoteMode={isNoteMode}
+            onInput={(v) => handleInput(selectedCell.row, selectedCell.col, v)}
+            onErase={() => handleInput(selectedCell.row, selectedCell.col, 0)}
+            selectedCell={selectedCell}
+          />
+        </div>
+
+        {/* 2. 오른쪽: 실시간 채팅창 (멀티플레이 전용) */}
+        {gameId.startsWith("multi:") && (
+          <div style={styles.sidebar}>
+            <ChatWindow
+              messages={chatMessages}
+              onSendMessage={sendChat}
+              myId={myId}
+              height="600px" // 보드판 높이에 맞춰 적절히 조절
+            />
+            {/* 🏳️ 나중에 여기에 투표(GG) 버튼 등을 추가하면 좋습니다 */}
+          </div>
+        )}
       </div>
 
+      {/* 3. 오버레이 (Pause/Win/Fail) */}
       <GameOverlay
         game={game}
         setGame={setGame}
         viewMode={viewMode}
         setViewMode={setViewMode}
-        saveAndExit={() => navigate("/")}
+        saveAndExit={handleSaveAndExit}
         formatTime={formatTime}
         seconds={seconds}
         setSeconds={setSeconds}
         togglePause={() =>
           setViewMode((v) => (v === "pause" ? "game" : "pause"))
         }
+        gameId={gameId}
       />
     </div>
   );
 }
 
+// 🎨 스타일 정의
+const styles = {
+  pageWrapper: {
+    position: "relative",
+    minHeight: "100vh",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "flex-start",
+    padding: "20px",
+    backgroundColor: "#f8f9fa", // 배경색은 취향껏
+  },
+  mainLayout: {
+    display: "flex",
+    flexDirection: "row", // 가로 배치 핵심
+    gap: "30px", // 보드와 채팅 사이 간격
+    alignItems: "flex-start",
+  },
+  gameSection: {
+    flex: "0 0 auto", // 보드 크기 유지
+    transition: "opacity 0.3s ease",
+  },
+  sidebar: {
+    flex: "0 0 320px", // 채팅창 너비 고정
+    position: "sticky", // 스크롤 시 따라오게 함
+    top: "20px",
+  },
+};
 export default GamePage;

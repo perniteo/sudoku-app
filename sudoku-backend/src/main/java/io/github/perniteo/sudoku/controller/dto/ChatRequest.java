@@ -10,5 +10,6 @@ import lombok.NoArgsConstructor;
 public class ChatRequest {
   private String sender; // 보낸 사람 닉네임
   private String content; // 메시지 내용
+  private String userId;
   private String timestamp; // 보낸 시간 (선택)
 }

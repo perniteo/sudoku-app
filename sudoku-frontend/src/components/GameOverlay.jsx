@@ -11,34 +11,59 @@ const GameOverlay = ({
   startGame,
   togglePause,
   saveAndExit,
+  gameId,
 }) => {
+  const isMulti = gameId?.startsWith("multi:");
+  const canSurrender = seconds >= 180; // 3분 기준
+
   // 1. 일시정지 오버레이 (완전 차단 + 세련된 다크그레이)
   if (viewMode === "pause") {
     return (
       <div style={styles.fullOverlay}>
         <div style={styles.pauseBox}>
-          <h2 style={{ marginBottom: "20px", color: "#333" }}>PAUSED</h2>
+          {/* 🎯 멀티는 OPTIONS, 싱글은 PAUSED */}
+          <h2 style={{ marginBottom: "20px", color: "#333" }}>
+            {isMulti ? "GAME OPTIONS" : "PAUSED"}
+          </h2>
+
           <div style={styles.btnGroup}>
             <button onClick={togglePause} style={styles.primaryBtn}>
               계속하기
             </button>
+
+            {/* 🎯 멀티플레이 전용: 탈주 vs 항복 */}
             <button
               onClick={() => {
+                if (isMulti && !canSurrender) {
+                  if (
+                    !window.confirm(
+                      "🚨 아직 3분이 지나지 않았습니다! 지금 나가면 탈주 페널티가 부여됩니다. 정말 나갈까요?",
+                    )
+                  )
+                    return;
+                }
+                saveAndExit(seconds);
                 setGame(null);
-                saveAndExit(); // Call the saveAndExit function
                 setViewMode("menu");
               }}
-              style={styles.secondaryBtn}
+              style={
+                isMulti && !canSurrender
+                  ? styles.dangerBtn
+                  : styles.secondaryBtn
+              }
             >
-              나가기
+              {isMulti
+                ? canSurrender
+                  ? "🏳️ 항복하고 나가기"
+                  : "🏃 탈주하기"
+                : "저장 후 나가기"}
             </button>
           </div>
 
-          {/* 강제 승리 테스트 버튼 (깔끔하게 하단 배치) */}
           <button
             onClick={() => {
               setGame((prev) => ({ ...prev, status: "COMPLETED" }));
-              setViewMode("game"); // 오버레이를 닫기 위해 game으로 변경
+              setViewMode("game");
             }}
             style={styles.cheatBtn}
           >

@@ -5,7 +5,7 @@ import api from "../api";
 import SockJS from "sockjs-client";
 import { Client } from "@stomp/stompjs";
 
-function WaitingRoomPage({ myId, token }) {
+function WaitingRoomPage({ myId, token, user }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { roomCode: urlRoomCode } = useParams();
@@ -131,13 +131,29 @@ function WaitingRoomPage({ myId, token }) {
 
   // 🎯 4. 메시지 전송 핸들러
   const sendChat = (content) => {
-    if (!stompClientRef.current?.connected || !roomInfo?.gameId) return;
+    if (!stompClientRef.current?.connected) return;
+
+    // 🎯 디버깅용: user 객체가 진짜 있는지 콘솔에 찍어보세요.
+    console.log("👤 현재 유저 상태:", user);
+
+    // 닉네임이 있으면 닉네임, 없으면 이메일, 둘 다 없으면 익명
+    let senderName = "익명";
+    if (token && user) {
+      senderName = user.nickname || user.email || "나";
+    }
+
+    const chatPayload = {
+      sender: senderName,
+      content: content,
+      userId: myId, // 👈 이제 말풍선은 이걸로 구분됨
+      timestamp: new Date().toISOString(),
+    };
+
     stompClientRef.current.publish({
       destination: `/multi/game/${roomInfo.gameId}/chat`,
-      body: JSON.stringify({ sender: token ? "나" : "익명", content }),
+      body: JSON.stringify(chatPayload),
     });
   };
-
   const updateDifficulty = (newDiff) => {
     if (!roomInfo?.isHost || !stompClientRef.current?.connected) return;
     stompClientRef.current.publish({

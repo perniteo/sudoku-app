@@ -1,7 +1,9 @@
 import React from "react";
+import { useNavigate } from "react-router-dom";
 import { AuthService } from "../services/AuthService"; // 🎯 서비스 직접 임포트
 
 const Header = ({ token, setToken, onLoginClick, onShowRecords }) => {
+  const navigate = useNavigate();
   // 🎯 로그아웃 로직 분리
   const handleLogout = async () => {
     try {
@@ -27,7 +29,10 @@ const Header = ({ token, setToken, onLoginClick, onShowRecords }) => {
           </button>
         ) : (
           <div style={styles.userInfo}>
-            <button onClick={onShowRecords} style={styles.recordBtn}>
+            <button
+              onClick={() => navigate("/records")}
+              style={styles.recordBtn}
+            >
               📊 내 기록
             </button>
             <span style={styles.userText}>ONLINE</span>

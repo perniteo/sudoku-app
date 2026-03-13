@@ -42,7 +42,12 @@ const AuthModal = ({
 
         // 성공 시 처리
         localStorage.setItem("accessToken", data.accessToken);
-        onLoginSuccess(data.accessToken, data.email); // 상위 컴포넌트에 토큰과 이메일 전달
+        // 🎯 [수정] 이메일뿐만 아니라 객체 형태로 정보를 몽땅 넘겨줍니다.
+        // 만약 서버가 nickname을 안 준다면 우선 email을 nickname 대용으로라도 씁니다.
+        onLoginSuccess(data.accessToken, {
+          email: data.email,
+          nickname: data.nickname || data.email.split("@")[0], // 닉네임 없으면 아이디라도!
+        });
         onClose(); // 모달 닫기
         alert("로그인되었습니다!");
       } else {

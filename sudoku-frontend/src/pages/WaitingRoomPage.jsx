@@ -154,6 +154,7 @@ function WaitingRoomPage({ myId, token, user }) {
       body: JSON.stringify(chatPayload),
     });
   };
+
   const updateDifficulty = (newDiff) => {
     if (!roomInfo?.isHost || !stompClientRef.current?.connected) return;
     stompClientRef.current.publish({
@@ -184,6 +185,7 @@ function WaitingRoomPage({ myId, token, user }) {
       onCancel={() => navigate("/")}
       onStartGame={startMultiGame}
       isHost={roomInfo.isHost}
+      myId={myId}
     />
   );
 }

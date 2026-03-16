@@ -56,6 +56,7 @@ public class SecurityConfig {
     // 🎯 로컬 테스트용 + Vercel 배포용 주소 추가
     configuration.setAllowedOrigins(java.util.List.of(
         "http://localhost:3000",
+        "https://sudoku-app-1c3v.onrender.com", // render address
         "https://sudoku-app-production-fc40.up.railway.app", // 내 API 주소
         "https://sudoku-app-liard-eta.vercel.app",         // 현재 에러난 주소
         "https://sudoku-app-git-main-perniteos-projects.vercel.app", // 브랜치 주소

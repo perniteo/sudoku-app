@@ -13,6 +13,7 @@ services:
     container_name: grafana
     ports:
       - "3001:3000"
+
 #  # 3. 레디스
 #  redis:
 #    image: redis:latest

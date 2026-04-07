@@ -21,12 +21,12 @@ public class JwtProvider {
     this.accessTokenExpiration = expirationTime;
   }
 
-  // 🎯 기존 메서드 이름을 명확하게 변경
+  // 기존 메서드 이름을 명확하게 변경
   public String createAccessToken(String email) {
     return createToken(email, accessTokenExpiration);
   }
 
-  // 🎯 Refresh Token 발급용 메서드 추가
+  // Refresh Token 발급용 메서드 추가
   public String createRefreshToken(String email) {
     // 7일 604800000L
     long refreshTokenExpiration = 604800000L;

@@ -48,6 +48,16 @@ public class AuthService {
   }
 
   @Transactional(readOnly = true)
+  public boolean checkEmailDuplicate(String email) {
+    return userRepository.existsByEmail(email);
+  }
+
+  @Transactional(readOnly = true)
+  public boolean checkNicknameDuplicate(String nickname) {
+    return userRepository.existsByNickname(nickname);
+  }
+
+  @Transactional(readOnly = true)
   public TokenResponse signIn(SignInRequest dto) { // 🎯 반환 타입 변경
     // 1. 유저 검증
     User user = userRepository.findByEmail(dto.getEmail())

@@ -4,6 +4,7 @@ import io.github.perniteo.auth.dto.ReissueRequest;
 import io.github.perniteo.auth.dto.SignInRequest;
 import io.github.perniteo.auth.dto.TokenResponse;
 import io.github.perniteo.auth.exception.AuthException;
+import io.github.perniteo.auth.repository.UserRepository;
 import io.github.perniteo.auth.service.AuthService;
 import io.github.perniteo.auth.dto.SignUpRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -33,6 +35,16 @@ public class AuthController {
   public ResponseEntity<String> signUp(@RequestBody SignUpRequest dto) {
     authService.signUp(dto);
     return ResponseEntity.status(HttpStatus.CREATED).body("회원가입이 완료되었습니다.");
+  }
+
+  @GetMapping("/check-email")
+  public ResponseEntity<Boolean> checkEmail(@RequestParam String email) {
+    return ResponseEntity.ok(authService.checkEmailDuplicate(email));
+  }
+
+  @GetMapping("/check-nickname")
+  public ResponseEntity<Boolean> checkNickname(@RequestParam String nickname) {
+    return ResponseEntity.ok(authService.checkNicknameDuplicate(nickname));
   }
 
   // entity로 통합

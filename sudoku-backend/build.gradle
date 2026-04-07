@@ -61,6 +61,10 @@ dependencies {
 
     // 보안 처리를 위한 Spring Security Messaging (나중에 토큰 인증 시 필요)
     // implementation 'org.springframework.security:spring-security-messaging'
+
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+
 }
 
 test {

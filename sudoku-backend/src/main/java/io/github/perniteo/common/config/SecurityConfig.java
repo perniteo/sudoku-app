@@ -66,7 +66,7 @@ public class SecurityConfig {
     configuration.addAllowedMethod("*"); // 모든 HTTP 메서드 허용
     configuration.setAllowCredentials(true); // 인증정보(쿠키 등) 허용
 
-    // 🔥 [이걸 추가!] 3600초(1시간) 동안 OPTIONS 요청 결과를 브라우저에 캐싱함
+    // 3600초(1시간) 동안 OPTIONS 요청 결과를 브라우저에 캐싱함
     configuration.setMaxAge(3600L);
 
     org.springframework.web.cors.UrlBasedCorsConfigurationSource source = new org.springframework.web.cors.UrlBasedCorsConfigurationSource();

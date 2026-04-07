@@ -57,6 +57,15 @@ jwt:
   secret: ${JWT_SECRET:XPfmKkuX0bYR1ap3mNJstwjhzLshL7wCntxNob77erYHKRiY8VBXZXDAaLXeAq1B}
   expiration-time: 3600000 # 1시간 Access
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: prometheus, metrics, health
+  metrics:
+    tags:
+      application: sudoku-app # 그라파나에서 구분할 이름
+
 #SPRING_DATA_REDIS_LETTUCE_POOL_MAX_ACTIVE=8
 #SPRING_DATA_REDIS_LETTUCE_POOL_MAX_IDLE=8
 #SPRING_DATA_REDIS_LETTUCE_POOL_MIN_IDLE=2

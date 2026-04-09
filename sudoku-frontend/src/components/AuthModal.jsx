@@ -9,6 +9,44 @@ const AuthModal = ({
   game,
   onLoginSuccess, // 로그인 성공 시 호출될 콜백 (setToken 등)
 }) => {
+  // ✨ 중복 체크 메시지 상태 추가
+  const [errors, setErrors] = useState({
+    email: "",
+    nickname: "",
+  });
+
+  // ✨ 이메일 중복 체크
+  const handleEmailBlur = async () => {
+    if (isLoginView || !formData.email) return; // 로그인 모드거나 비어있으면 패스
+    try {
+      const isDuplicate = await AuthService.checkEmail(formData.email);
+      setErrors((prev) => ({
+        ...prev,
+        email: isDuplicate
+          ? "이미 사용 중인 이메일입니다. ❌"
+          : "사용 가능한 이메일입니다. ✅",
+      }));
+    } catch (err) {
+      setErrors((prev) => ({ ...prev, email: "확인 불가" }));
+    }
+  };
+
+  // ✨ 닉네임 중복 체크
+  const handleNicknameBlur = async () => {
+    if (isLoginView || !formData.nickname) return;
+    try {
+      const isDuplicate = await AuthService.checkNickname(formData.nickname);
+      setErrors((prev) => ({
+        ...prev,
+        nickname: isDuplicate
+          ? "이미 사용 중인 닉네임입니다. ❌"
+          : "사용 가능한 닉네임입니다. ✅",
+      }));
+    } catch (err) {
+      setErrors((prev) => ({ ...prev, nickname: "확인 불가" }));
+    }
+  };
+
   // 1. 입력 데이터를 담을 상태
   const [formData, setFormData] = useState({
     email: "",
@@ -98,16 +136,46 @@ const AuthModal = ({
             placeholder="이메일 (ID)"
             style={styles.input}
             onChange={handleChange}
+            onBlur={handleEmailBlur} // 🎯 이메일 입력칸에서 나갈 때 검사
           />
-          {!isLoginView && (
-            <input
-              name="nickname"
-              value={formData.nickname}
-              placeholder="닉네임 (최대 20자)"
-              style={styles.input}
-              onChange={handleChange}
-            />
+          {/* ✨ 회원가입 모드일 때만 이메일 중복 메시지 표시 */}
+          {!isLoginView && errors.email && (
+            <p
+              style={{
+                ...styles.msgText,
+                color: errors.email.includes("✅") ? "#4CAF50" : "#f44336",
+              }}
+            >
+              {errors.email}
+            </p>
           )}
+
+          {!isLoginView && (
+            <>
+              <input
+                name="nickname"
+                value={formData.nickname}
+                placeholder="닉네임 (최대 20자)"
+                style={styles.input}
+                onChange={handleChange}
+                onBlur={handleNicknameBlur} // 🎯 닉네임 입력칸에서 나갈 때 검사
+              />
+              {/* ✨ 닉네임 중복 메시지 표시 */}
+              {errors.nickname && (
+                <p
+                  style={{
+                    ...styles.msgText,
+                    color: errors.nickname.includes("✅")
+                      ? "#4CAF50"
+                      : "#f44336",
+                  }}
+                >
+                  {errors.nickname}
+                </p>
+              )}
+            </>
+          )}
+
           <input
             name="password"
             type="password"
@@ -116,6 +184,7 @@ const AuthModal = ({
             style={styles.input}
             onChange={handleChange}
           />
+
           {!isLoginView && (
             <input
               name="confirmPassword"
@@ -127,7 +196,22 @@ const AuthModal = ({
             />
           )}
 
-          <button onClick={handleAuthAction} style={styles.submitBtn}>
+          <button
+            onClick={handleAuthAction}
+            style={{
+              ...styles.submitBtn,
+              // 🎯 중복이 있거나 필수값이 없으면 버튼을 비활성화 스타일로 변경 (선택사항)
+              opacity:
+                !isLoginView &&
+                (errors.email.includes("❌") || errors.nickname.includes("❌"))
+                  ? 0.5
+                  : 1,
+            }}
+            disabled={
+              !isLoginView &&
+              (errors.email.includes("❌") || errors.nickname.includes("❌"))
+            }
+          >
             {isLoginView ? "로그인" : "가입하기"}
           </button>
         </div>

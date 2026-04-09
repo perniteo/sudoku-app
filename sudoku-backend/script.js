@@ -10,9 +10,12 @@ export const options = {
 };
 
 export default function () {
-  const url = 'http://localhost:8080/games/start';
+// 배포 paas
+//  const url = 'https://sudoku-app-1c3v.onrender.com/games/start';
 
-  // POST로 보낼 데이터 (난이도: 4 ~ 11)
+// local test
+  const url = 'http://localhost:8080/games/start';
+//   POST로 보낼 데이터 (난이도: 4 ~ 11)
   const payload = JSON.stringify({
     difficulty: 4
   });

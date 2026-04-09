@@ -49,10 +49,10 @@ function App() {
       localStorage.removeItem("accessToken");
     };
 
-    window.addEventListener("auth_update", handleAuthUpdate);
+    window.addEventListener("auth_refresh", handleAuthUpdate);
     window.addEventListener("auth_logout", handleLogout);
     return () => {
-      window.removeEventListener("auth_update", handleAuthUpdate);
+      window.removeEventListener("auth_refresh", handleAuthUpdate);
       window.removeEventListener("auth_logout", handleLogout);
     };
   }, []);

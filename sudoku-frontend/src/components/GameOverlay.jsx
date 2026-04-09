@@ -1,4 +1,6 @@
 import React from "react";
+import { useNavigate } from "react-router-dom"; // 🎯 추가
+import { useState } from "react"; // 🎯 추가
 
 const GameOverlay = ({
   game,
@@ -12,7 +14,10 @@ const GameOverlay = ({
   togglePause,
   saveAndExit,
   gameId,
+  setShowAuthModal, // 🎯 로그인 모달 제어 함수
+  setIsLoginView, // 🎯 로그인/회원가입 전환 상태 제어 함수
 }) => {
+  const navigate = useNavigate(); // 🎯 선언
   const isMulti = gameId?.startsWith("multi:");
   const canSurrender = seconds >= 180; // 3분 기준
 
@@ -44,7 +49,7 @@ const GameOverlay = ({
                 }
                 saveAndExit(seconds);
                 setGame(null);
-                setViewMode("menu");
+                navigate("/"); // 🎯 메인 메뉴로 이동
               }}
               style={
                 isMulti && !canSurrender
@@ -96,7 +101,7 @@ const GameOverlay = ({
             </p>
 
             {/* ★ 로그인 유도 섹션 추가 ★ */}
-            {!localStorage.getItem("token") ? (
+            {!localStorage.getItem("accessToken") ? (
               <div style={styles.loginPromote}>
                 <p
                   style={{
@@ -118,7 +123,10 @@ const GameOverlay = ({
                   지금 로그인하면 이 기록을 랭킹에 등록할 수 있습니다!
                 </p>
                 <button
-                  onClick={() => setViewMode("SIGNIN")}
+                  onClick={() => {
+                    setIsLoginView(true); // 로그인 모드로 초기화
+                    setShowAuthModal(true); // 모달 띄우기
+                  }}
                   style={styles.loginSaveBtn}
                 >
                   로그인하고 기록 저장하기
@@ -145,6 +153,7 @@ const GameOverlay = ({
               onClick={() => {
                 setGame(null);
                 setViewMode("menu");
+                navigate("/"); // 🎯 메인 메뉴로 이동
               }}
               style={styles.primaryBtn}
             >
@@ -154,11 +163,39 @@ const GameOverlay = ({
               onClick={() => {
                 setGame(null);
                 setSeconds(0);
-                setViewMode("menu");
+                navigate("/"); // 🎯 메인 메뉴로 이동
               }}
               style={styles.dangerBtn}
             >
               종료
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (game?.status === "FAILED") {
+    return (
+      <div
+        style={{ ...styles.fullOverlay, backgroundColor: "rgba(0, 0, 0, 0.8)" }}
+      >
+        <div
+          style={{
+            ...styles.successBox,
+            borderColor: "#f44336",
+            backgroundColor: "#fff",
+          }}
+        >
+          <span style={{ fontSize: "50px" }}>💀</span>
+          <h2 style={{ color: "#d32f2f", margin: "10px 0" }}>GAME OVER</h2>
+          <p>목숨을 모두 잃었습니다!</p>
+          <div style={styles.btnGroup}>
+            <button onClick={startGame} style={styles.dangerBtn}>
+              재도전하기
+            </button>
+            <button onClick={() => navigate("/")} style={styles.secondaryBtn}>
+              메인메뉴로
             </button>
           </div>
         </div>

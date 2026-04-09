@@ -4,12 +4,14 @@ React 기반의 스도쿠 게임 프론트엔드입니다.
 사용자는 퍼즐을 직접 플레이하고, 검증 및 풀이 요청을 할 수 있습니다.
 
 ## Tech Stack
+
 - React
 - JavaScript (or TypeScript)
-- Vite
 - Axios
+<!-- - Vite (고려 중) -->
 
 ## Features
+
 - 스도쿠 보드 UI
 - 숫자 입력 및 검증
 - 백엔드 API 연동
@@ -36,5 +38,5 @@ React 기반의 스도쿠 게임 프론트엔드입니다.
 Backend server address:
 
     http://localhost:8080
-
-API 연동 로직은 개발 중입니다.
+    <!-- https://sudoku-app-production-fc40.up.railway.app --> expired
+    https://sudoku-app-1c3v.onrender.com

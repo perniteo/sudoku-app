@@ -8,12 +8,17 @@ import GameOverlay from "../components/GameOverlay";
 import SockJS from "sockjs-client";
 import { Client } from "@stomp/stompjs";
 import ChatWindow from "../components/ChatWindow";
+import api from "../api.js";
+import AuthModal from "../components/AuthModal"; // 🎯 추가
 
 function GamePage({ myId, token, user }) {
   const { gameId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const { gameId: urlGameId } = useParams();
+
+  const [showAuthModal, setShowAuthModal] = useState(false); // 모달 열림 상태
+  const [isLoginView, setIsLoginView] = useState(true); // 로그인/회원가입 전환 상태
 
   // 1. 상태 정의
   const [game, setGame] = useState(null);
@@ -177,64 +182,104 @@ function GamePage({ myId, token, user }) {
   // 6. 입력 핸들러 (싱글/멀티 분기 및 로그인 식별자 교정)
   const handleInput = useCallback(
     async (row, col, value) => {
-      if (!game || isPlacing || viewMode === "pause") return;
+      // 1. 기본 방어 로직
+      if (
+        !game ||
+        viewMode === "pause" ||
+        game.status === "COMPLETED" ||
+        game.status === "FAILED" ||
+        showAuthModal // 👈 이 조건이 핵심!
+      ) {
+        console.log("🚫 입력 불가 상태입니다.");
+        return;
+      }
 
-      // 🎯 [핵심 로직] 식별자 결정 우선순위
-      // 1. 로그인 토큰이 있고 myId가 user:로 시작하면 무조건 myId 사용
-      // 2. 그 외에는 URL 파라미터인 gameId 사용
-      const effectiveId = token && myId.startsWith("user:") ? myId : gameId;
+      // 🎯 [수정] roomInfo 제거하고 확실한 ID 추출 (전달받은 gameId를 우선순위로 사용 가능)
+      const currentId = game.gameId || game.id || gameId;
+      if (!currentId) return;
 
-      // 🎯 [중복 Prefix 방어] 백엔드에서 sudoku: 를 중복으로 붙여 500 에러나는 것 방지
-      const cleanId = effectiveId.startsWith("sudoku:")
-        ? effectiveId.replace("sudoku:", "")
-        : effectiveId;
+      // 🎯 [2. 낙관적 업데이트] UI 즉시 반영 (await 이전에 실행하여 반응성 극대화)
+      setGame((prev) => {
+        if (!prev) return prev;
 
-      if (gameId.startsWith("multi:")) {
-        // --- 멀티플레이 로직 ---
-        if (!stompClientRef.current?.connected) {
-          console.warn("⚠️ 소켓이 아직 연결되지 않았습니다.");
-          return;
+        if (isNoteMode) {
+          // --- 메모 모드: notes 배열만 업데이트 ---
+          const newNotes = prev.notes.map((r) => [...r]);
+          const currentMemos = Array.isArray(newNotes[row][col])
+            ? newNotes[row][col]
+            : [];
+
+          const updatedMemos = currentMemos.includes(value)
+            ? currentMemos.filter((v) => v !== value)
+            : [...currentMemos, value].sort((a, b) => a - b);
+
+          newNotes[row][col] = updatedMemos;
+          return { ...prev, notes: newNotes };
+        } else {
+          // --- 숫자 모드: board 배열만 업데이트 ---
+          const newBoard = prev.board.map((r) => [...r]);
+          newBoard[row][col] = value;
+          return { ...prev, board: newBoard };
         }
+      });
 
-        const path = isNoteMode ? "memo" : "place";
+      // 🎯 [3. 멀티플레이 분기]
+      if (currentId.toString().startsWith("multi:")) {
+        if (stompClientRef.current?.connected) {
+          const path = isNoteMode ? "memo" : "place";
+          stompClientRef.current.publish({
+            destination: `/multi/game/${currentId}/${path}`,
+            body: JSON.stringify({
+              row,
+              col,
+              value,
+              elapsedTime: seconds,
+              userId: myId,
+            }),
+          });
+        }
+        return; // 멀티플레이는 여기서 종료
+      }
 
-        // 💡 [발송] 서버로 입력 정보 전송
-        stompClientRef.current.publish({
-          destination: `/multi/game/${gameId}/${path}`,
-          body: JSON.stringify({
-            row,
-            col,
-            value,
-            elapsedTime: seconds,
-            userId: myId, // 실제 행위자 ID
-          }),
+      // 🎯 [4. 싱글플레이 로직]
+      if (isPlacing) return;
+      setIsPlacing(true);
+
+      try {
+        const endpoint = isNoteMode
+          ? `/games/${currentId}/memo`
+          : `/games/${currentId}/place`;
+        const res = await api.post(endpoint, {
+          row,
+          col,
+          value,
+          elapsedTime: seconds,
         });
-        console.log(
-          `📤 [멀티:${path}] 전송 - ID: ${effectiveId}, 값: ${value}`,
-        );
-      } else {
-        // --- 싱글플레이 로직 ---
-        setIsPlacing(true);
-        try {
-          // 🎯 이제 anon: 대신 정확한 user:email 경로로 API를 호출합니다.
-          const res = isNoteMode
-            ? await GameService.toggleMemo(cleanId, row, col, value)
-            : await GameService.placeNumber(cleanId, row, col, value, seconds);
 
-          setGame((prev) => ({ ...prev, ...res.data }));
-          console.log(
-            `✅ [싱글:${isNoteMode ? "메모" : "입력"}] 성공 - ID: ${cleanId}`,
-          );
-        } catch (err) {
-          console.error("❌ 입력 실패:", err);
-          // 401 에러 등이 나면 api.js 인터셉터가 처리함
-        } finally {
-          setIsPlacing(false);
-        }
+        const data = res.data;
+        if (!data) return;
+
+        if (data.elapsedTime !== undefined) setSeconds(data.elapsedTime);
+
+        // 🎯 [서버 결과 반영] status, life 업데이트로 Overlay 출력 보장
+        setGame((prev) => ({
+          ...prev,
+          board: data.board || prev.board,
+          // 서버 데이터(c.m)를 프론트엔드 notes 형식으로 파싱
+          notes: data.board
+            ? data.board.map((r) => r.map((c) => Array.from(c.m || [])))
+            : prev.notes,
+          status: data.status || prev.status,
+          life: data.life !== undefined ? data.life : prev.life,
+        }));
+      } catch (error) {
+        console.error("💥 싱글플레이 요청 실패:", error);
+      } finally {
+        setIsPlacing(false);
       }
     },
-    // 🎯 의존성 배열에 token과 myId를 추가하여 로그인 전환 시 함수가 갱신되게 함
-    [game, gameId, isNoteMode, isPlacing, seconds, myId, token, viewMode],
+    // 🎯 의존성 배열에서 roomInfo 제거, 필요한 값만 유지
+    [game, isNoteMode, isPlacing, seconds, myId, gameId, viewMode],
   );
 
   // 7. 채팅 전송 핸들러 (멀티플레이 전용)
@@ -261,6 +306,15 @@ function GamePage({ myId, token, user }) {
   // 8. 키보드 이벤트
   useEffect(() => {
     const handleKeyDown = (e) => {
+      // 🎯 [추가] 채팅창 입력 중일 때는 게임 키보드 이벤트 무시
+      if (
+        e.target.tagName === "INPUT" ||
+        e.target.tagName === "TEXTAREA" ||
+        e.target.isContentEditable
+      ) {
+        return;
+      }
+
       // 🎯 ESC는 일시정지 토글 (게임 중이 아닐 때도 반응)
       if (e.key === "Escape") {
         console.log("⌨️ ESC 눌림! 현재 모드:", viewMode);
@@ -375,6 +429,22 @@ function GamePage({ myId, token, user }) {
           setViewMode((v) => (v === "pause" ? "game" : "pause"))
         }
         gameId={gameId}
+        setShowAuthModal={setShowAuthModal} // 👈 추가
+        setIsLoginView={setIsLoginView} // 👈 추가
+      />
+
+      {/* 2. AuthModal 배치 (보통 최하단에 둠) */}
+      <AuthModal
+        show={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        isLoginView={isLoginView}
+        setIsLoginView={setIsLoginView}
+        game={game}
+        onLoginSuccess={(token, userData) => {
+          // 로그인 성공 시 실행할 로직
+          // 예: setMyId(`user:${userData.email}`), setToken(token) 등
+          setShowAuthModal(false);
+        }}
       />
     </div>
   );

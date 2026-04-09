@@ -57,7 +57,7 @@ public class SecurityConfig {
     configuration.setAllowedOrigins(java.util.List.of(
         "http://localhost:3000",
         "https://sudoku-app-1c3v.onrender.com", // render address
-        "https://sudoku-app-production-fc40.up.railway.app", // 내 API 주소
+        "https://sudoku-app-production-fc40.up.railway.app", // 내 API 주소 만료됨
         "https://sudoku-app-liard-eta.vercel.app",         // 현재 에러난 주소
         "https://sudoku-app-git-main-perniteos-projects.vercel.app", // 브랜치 주소
         "https://sudoku-app.vercel.app"                    // 🎯 (예상되는) 공식 대표 주소

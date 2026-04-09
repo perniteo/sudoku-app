@@ -1,6 +1,19 @@
 import api from "../api";
 
 export const AuthService = {
+  // 이메일 중복 체크
+  checkEmail: async (email) => {
+    // ⚠️ 경로가 백엔드 컨트롤러의 @RequestMapping("/api/auth") + @GetMapping("/check-email")과 맞아야 함
+    const res = await api.get(`/api/auth/check-email?email=${email}`);
+    return res.data; // true 또는 false 반환
+  },
+
+  // 닉네임 중복 체크
+  checkNickname: async (nickname) => {
+    const res = await api.get(`/api/auth/check-nickname?nickname=${nickname}`);
+    return res.data;
+  },
+
   // 로그인
   signIn: async (email, password) => {
     const res = await api.post("/api/auth/sign-in", { email, password });

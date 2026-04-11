@@ -49,6 +49,12 @@ public class BoardGeneratorV2 {
     return board;
   }
 
+  public static ArrayList<Integer> shuffled() {
+    Collections.shuffle(list);
+
+    return list;
+  }
+
   // --------------------------------------------
   // Mask 기반 백트래킹
   // --------------------------------------------
@@ -56,7 +62,7 @@ public class BoardGeneratorV2 {
     for (int r = 0; r < 9; r++) {
       for (int c = 0; c < 9; c++) {
         if (board[r][c] == 0) {
-          for (int num : list) {
+          for (int num : shuffled()) {
             int bit = 1 << (num - 1);
             int boxIndex = (r / 3) * 3 + (c / 3);
             if ((rowMask[r] & bit) == 0 &&
@@ -124,9 +130,67 @@ public class BoardGeneratorV2 {
     solutionCount++;
   }
 
+  private void backTrackingUniqueV2() {
+    // 1. 이미 해가 2개 이상 발견되었다면 즉시 모든 재귀 종료 (가지치기)
+    if (solutionCount >= 2) return;
+
+    int r = -1;
+    int c = -1;
+
+    // 2. 빈 칸 찾기 (가장 처음 만나는 0 찾기)
+    for (int i = 0; i < 9; i++) {
+      for (int j = 0; j < 9; j++) {
+        if (board[i][j] == 0) {
+          r = i;
+          c = j;
+          break;
+        }
+      }
+      if (r != -1) break;
+    }
+
+    // 3. 모든 칸이 채워졌다면 해답 발견
+    if (r == -1) {
+      solutionCount++;
+      return;
+    }
+
+    // 4. 1부터 9까지 "고정된 순서"로 시도 (Temp 방식의 장점 도입)
+    // list를 돌지 않고 직접 1~9를 체크하여 캐시 효율과 예측 가능성을 높임
+    for (int num = 1; num <= 9; num++) {
+      int bit = 1 << (num - 1);
+      int boxIndex = (r / 3) * 3 + (c / 3);
+
+      // Mask를 이용한 빠른 유효성 검사
+      if ((rowMask[r] & bit) == 0 &&
+          (colMask[c] & bit) == 0 &&
+          (boxMask[boxIndex] & bit) == 0) {
+
+        // 상태 업데이트
+        board[r][c] = num;
+        rowMask[r] |= bit;
+        colMask[c] |= bit;
+        boxMask[boxIndex] |= bit;
+
+        // 재귀 호출
+        backTrackingUniqueV2();
+
+        // 백트래킹 (원상복구)
+        board[r][c] = 0;
+        rowMask[r] ^= bit;
+        colMask[c] ^= bit;
+        boxMask[boxIndex] ^= bit;
+
+        // 5. 탐색 중 해가 2개 이상이 되면 더 이상 숫자를 넣어볼 필요 없음
+        if (solutionCount >= 2) return;
+      }
+    }
+  }
+
+
   private boolean uniqueAnswerFinder() {
     solutionCount = 0;
-    backTrackingUnique();
+    backTrackingUniqueV2();
     return solutionCount == 1;
   }
 

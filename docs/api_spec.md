@@ -5,8 +5,8 @@
 - [x] 게임 진행/검증 (server-stateful)
 - [x] 유저 인증 (JWT)
 - [ ] 랭킹 시스템 (애매해서 고민)
-- [ ] 히스토리 (개인 통계)
-- [ ] 같이 풀기
+- [x] 히스토리 (개인 통계)
+- [x] 같이 풀기
 
 ## 기술적 포인트
 - JWT 인증: stateless 확장성 
@@ -19,5 +19,5 @@
 
 - [x] server In-memory -> redis(aof)
 - [x] 이어하기 (user-id) 기반 ttl 포함한 redis 저장
-- [ ] 비회원(uuid) 세션 저장
-- [ ] jwt refresh token 발급 후 저장
+- [x] 비회원(uuid) 세션 저장
+- [x] jwt refresh token 발급 후 저장

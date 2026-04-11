@@ -21,7 +21,15 @@ function GamePage({ myId, token, user }) {
   const [isLoginView, setIsLoginView] = useState(true); // 로그인/회원가입 전환 상태
 
   // 1. 상태 정의
-  const [game, setGame] = useState(null);
+  const [game, setGame] = useState({
+    board: Array(9)
+      .fill(null)
+      .map(() => Array(9).fill(0)),
+    notes: Array(9)
+      .fill(null)
+      .map(() => Array(9).fill([])),
+    status: "LOADING",
+  });
   const [seconds, setSeconds] = useState(0);
   const [selectedCell, setSelectedCell] = useState({ row: 0, col: 0 });
   const [isNoteMode, setIsNoteMode] = useState(false);
@@ -56,7 +64,7 @@ function GamePage({ myId, token, user }) {
     return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
   };
 
-  // 🎯 3. 멀티플레이 전용 소켓 연결 (중복 구독 방지 보강)
+  // 3. 멀티플레이 소켓 연결 함수 (보강됨)
   const connectMultiGame = useCallback(() => {
     if (!gameId.startsWith("multi:") || stompClientRef.current?.active) return;
 
@@ -65,66 +73,64 @@ function GamePage({ myId, token, user }) {
     );
     const client = new Client({
       webSocketFactory: () => socket,
-      debug: (str) => console.log("🚀 GAME STOMP:", str),
-      escapeHeaderValues: false,
+      debug: (str) => console.log("🚀 STOMP:", str),
       onConnect: () => {
         console.log("✅ 게임 서버 연결 성공");
 
-        // 💡 중복 구독 방지를 위해 현재 클라이언트로만 구독 진행
-        // (1) 일반 게임판 업데이트
+        // (1) 일반 게임판 업데이트 (숫자 입력 등)
         client.subscribe(`/topic/game/${gameId}`, (msg) => {
-          const data = JSON.parse(msg.body);
+          const data = JSON.parse(msg.body); // 서버에서 온 새 데이터 (주로 숫자 v 중심)
 
           setGame((prev) => {
             if (!prev || !prev.board) return data;
 
-            // 🎯 [핵심] 서버 보드와 내 메모를 병합
+            // 🎯 [핵심] 서버 보드 데이터와 내 화면의 기존 메모(m)를 병합
             const mergedBoard = data.board.map((row, rIdx) =>
-              row.map((cell, cIdx) => ({
-                ...cell,
-                // 서버에서 온 숫자가 0이 아니면 메모를 지우고, 0이면 기존 메모(m) 유지
-                m: cell.v !== 0 ? [] : prev.board[rIdx][cIdx].m || [],
-              })),
+              row.map((cell, cIdx) => {
+                const prevCell = prev.board[rIdx][cIdx];
+
+                return {
+                  ...cell, // 서버에서 온 v(값) 등 반영
+                  // 🎯 조건: 서버에서 온 숫자가 0일 때만 기존 메모를 유지
+                  // 숫자가 채워지면(cell.v !== 0) 해당 칸의 메모는 날리는 게 맞음
+                  m: cell.v === 0 ? prevCell.m || [] : [],
+                };
+              }),
             );
 
             return {
               ...prev,
               ...data,
-              board: mergedBoard, // 👈 메모가 살아있는 새 보드 주입
+              board: mergedBoard, // 병합된 보드 주입
             };
           });
         });
-
-        // 🎯 (2) 실시간 메모 수신 (기존 toggleNote 로직 완벽 이식)
+        // (2) 실시간 메모 수신 (board 내부의 m 배열 수정)
         client.subscribe(`/topic/game/${gameId}/memo`, (msg) => {
-          const memoData = JSON.parse(msg.body);
-          const { row, col, value } = memoData;
+          const data = JSON.parse(msg.body);
+          const { row, col, value, userId } = data;
+
+          // 🎯 [핵심] 내가 보낸 메모 메시지면 로직을 실행하지 않음 (이미 내 화면엔 반영됨)
+          if (userId === myId) {
+            console.log("♻️ 내가 보낸 메모이므로 중복 반영 방지");
+            return;
+          }
 
           setGame((prev) => {
             if (!prev || !prev.board) return prev;
 
-            // 🔥 [불변성 핵심] 2차원 배열 깊은 복사 (참조값 변경 필수)
-            const newBoard = prev.board.map((r, rIdx) =>
-              rIdx === row ? [...r] : r,
-            );
-
+            const newBoard = prev.board.map((r) => [...r]);
             const targetCell = { ...newBoard[row][col] };
-            const currentMemos = new Set(targetCell.m || []);
+            const currentMemos = Array.isArray(targetCell.m)
+              ? targetCell.m
+              : [];
 
-            if (currentMemos.has(value)) {
-              currentMemos.delete(value);
-            } else {
-              currentMemos.add(value);
-            }
+            // 상대방이 보낸 메모 상태 반영
+            targetCell.m = currentMemos.includes(value)
+              ? currentMemos.filter((v) => v !== value)
+              : [...currentMemos, value].sort((a, b) => a - b);
 
-            targetCell.m = Array.from(currentMemos);
             newBoard[row][col] = targetCell;
-
-            // 로그가 한 번만 찍히는지 확인하세요!
-            console.log(
-              `🎨 [UI Update] (${row}, ${col}) 에 메모 ${value} 반영`,
-            );
-
             return { ...prev, board: newBoard };
           });
         });
@@ -164,66 +170,70 @@ function GamePage({ myId, token, user }) {
     };
   }, [gameId, token, navigate, connectMultiGame]);
 
-  // GamePage.jsx 내부
-
-  // 🎯 5. 타이머 제어 (useEffect)
+  // 🎯 5. 타이머 제어 (useEffect) - 멀티플레이 즉시 실행 보강
   useEffect(() => {
-    const isMulti = gameId.startsWith("multi:");
-    // 🎯 멀티라면 오버레이 상관없이 흐르고, 싱글은 오버레이 없을 때만 흐름
-    const shouldRun =
-      game?.status === "PLAYING" && (isMulti || viewMode === "game");
+    const isMulti = gameId && gameId.startsWith("multi:");
+
+    // 🎯 멀티플레이는 gameId만 있어도(로딩 중이어도) 바로 시작
+    // 싱글플레이는 game.status가 PLAYING이고 viewMode가 game일 때만 시작
+    const shouldRun = isMulti
+      ? game?.status !== "COMPLETED" && game?.status !== "FAILED" // 멀티: 종료만 아니면 흐름
+      : game?.status === "PLAYING" && viewMode === "game"; // 싱글: 기존 조건
 
     if (shouldRun) {
-      timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
+      // 💡 1초마다 숫자를 올리되, clearInterval을 확실히 보장
+      timerRef.current = setInterval(() => {
+        setSeconds((s) => s + 1);
+      }, 1000);
     }
-    return () => clearInterval(timerRef.current);
-  }, [game?.status, viewMode, gameId]);
 
-  // 6. 입력 핸들러 (싱글/멀티 분기 및 로그인 식별자 교정)
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [game?.status, viewMode, gameId]); // 의존성 유지
+
+  // 6. 입력 핸들러 (에러 방지 및 로직 최적화)
   const handleInput = useCallback(
     async (row, col, value) => {
-      // 1. 기본 방어 로직
+      // 🎯 방어 로직 완화: game과 board만 있으면 통과
       if (
         !game ||
+        !game.board ||
         viewMode === "pause" ||
         game.status === "COMPLETED" ||
         game.status === "FAILED" ||
-        showAuthModal // 👈 이 조건이 핵심!
+        showAuthModal
       ) {
-        console.log("🚫 입력 불가 상태입니다.");
         return;
       }
 
-      // 🎯 [수정] roomInfo 제거하고 확실한 ID 추출 (전달받은 gameId를 우선순위로 사용 가능)
       const currentId = game.gameId || game.id || gameId;
       if (!currentId) return;
 
-      // 🎯 [2. 낙관적 업데이트] UI 즉시 반영 (await 이전에 실행하여 반응성 극대화)
+      // 🎯 [낙관적 업데이트] 메모와 숫자를 모두 game.board에서 처리
       setGame((prev) => {
-        if (!prev) return prev;
+        if (!prev || !prev.board) return prev;
+
+        const newBoard = prev.board.map((r) => [...r]);
+        const targetCell = { ...newBoard[row][col] };
 
         if (isNoteMode) {
-          // --- 메모 모드: notes 배열만 업데이트 ---
-          const newNotes = prev.notes.map((r) => [...r]);
-          const currentMemos = Array.isArray(newNotes[row][col])
-            ? newNotes[row][col]
-            : [];
-
-          const updatedMemos = currentMemos.includes(value)
+          // --- 메모 모드 ---
+          const currentMemos = Array.isArray(targetCell.m) ? targetCell.m : [];
+          targetCell.m = currentMemos.includes(value)
             ? currentMemos.filter((v) => v !== value)
             : [...currentMemos, value].sort((a, b) => a - b);
-
-          newNotes[row][col] = updatedMemos;
-          return { ...prev, notes: newNotes };
         } else {
-          // --- 숫자 모드: board 배열만 업데이트 ---
-          const newBoard = prev.board.map((r) => [...r]);
-          newBoard[row][col] = value;
-          return { ...prev, board: newBoard };
+          // --- 숫자 모드 ---
+          targetCell.v = value; // 숫자는 v 필드에 저장 (백엔드 구조에 맞춤)
+          targetCell.m = []; // 숫자가 채워지면 메모는 삭제
         }
+
+        newBoard[row][col] = targetCell;
+        return { ...prev, board: newBoard };
       });
 
-      // 🎯 [3. 멀티플레이 분기]
+      // 🎯 [멀티플레이 전송]
       if (currentId.toString().startsWith("multi:")) {
         if (stompClientRef.current?.connected) {
           const path = isNoteMode ? "memo" : "place";
@@ -238,7 +248,7 @@ function GamePage({ myId, token, user }) {
             }),
           });
         }
-        return; // 멀티플레이는 여기서 종료
+        return;
       }
 
       // 🎯 [4. 싱글플레이 로직]
@@ -249,6 +259,7 @@ function GamePage({ myId, token, user }) {
         const endpoint = isNoteMode
           ? `/games/${currentId}/memo`
           : `/games/${currentId}/place`;
+
         const res = await api.post(endpoint, {
           row,
           col,
@@ -261,24 +272,22 @@ function GamePage({ myId, token, user }) {
 
         if (data.elapsedTime !== undefined) setSeconds(data.elapsedTime);
 
-        // 🎯 [서버 결과 반영] status, life 업데이트로 Overlay 출력 보장
+        // 🎯 [서버 결과 반영] Optional Chaining(?.)을 사용해 안전하게 맵핑
         setGame((prev) => ({
           ...prev,
-          board: data.board || prev.board,
-          // 서버 데이터(c.m)를 프론트엔드 notes 형식으로 파싱
+          board: data.board || prev?.board,
           notes: data.board
-            ? data.board.map((r) => r.map((c) => Array.from(c.m || [])))
-            : prev.notes,
-          status: data.status || prev.status,
-          life: data.life !== undefined ? data.life : prev.life,
+            ? data.board.map((r) => r?.map((c) => Array.from(c?.m || [])) || [])
+            : prev?.notes || [],
+          status: data.status || prev?.status,
+          life: data.life !== undefined ? data.life : prev?.life,
         }));
       } catch (error) {
-        console.error("💥 싱글플레이 요청 실패:", error);
+        console.error("💥 요청 실패:", error);
       } finally {
         setIsPlacing(false);
       }
     },
-    // 🎯 의존성 배열에서 roomInfo 제거, 필요한 값만 유지
     [game, isNoteMode, isPlacing, seconds, myId, gameId, viewMode],
   );
 

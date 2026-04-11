@@ -49,8 +49,14 @@ export const AuthService = {
 
   // 로그아웃
   signOut: async () => {
-    // 🎯 서버가 쿠키를 삭제(maxAge: 0)할 수 있도록 호출
-    await api.post("/api/auth/sign-out");
-    localStorage.removeItem("accessToken");
+    try {
+      await api.post("/api/auth/sign-out");
+    } catch (err) {
+      console.error("로그아웃 요청 실패:", err);
+    } finally {
+      // 🎯 토큰과 함께 유저 정보도 반드시 삭제!
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("user"); // 이 줄 추가
+    }
   },
 };

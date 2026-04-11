@@ -8,9 +8,16 @@ export const GameService = {
   },
 
   // 🎯 2. 이어하기 체크: 유저 ID(userId)로 조회
-  checkRecentGame: (token, userId) => {
-    // 로그인 시 /games, 비로그인 시 /games/{userId}
-    const url = token ? `/games` : `/games/${userId}`;
+  checkRecentGame: (token, gameId) => {
+    // 🎯 1. gameId가 anon: 이거나 multi: 처럼 명확한 식별자가 있으면 그 주소를 사용
+    // 백엔드의 @GetMapping("/{id}") (메서드 2번)를 호출하게 됨
+    if (gameId && (gameId.includes("anon:") || gameId.includes("multi:"))) {
+      return api.get(`/games/${gameId}`);
+    }
+
+    // 🎯 2. 그 외에 로그인 상태에서 '최근 게임'을 불러올 때만 /games 호출
+    // 백엔드의 @GetMapping("") (메서드 1번) 호출 -> "user:이메일" 조회
+    const url = token ? `/games` : `/games/${gameId}`;
     return api.get(url);
   },
 

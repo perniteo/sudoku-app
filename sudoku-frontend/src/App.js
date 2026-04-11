@@ -12,12 +12,17 @@ import GamePage from "./pages/GamePage";
 import WaitingRoomPage from "./pages/WaitingRoomPage";
 import Lobby from "./pages/Lobby";
 import RecordsPage from "./pages/RecordsPage"; // 🎯 추가
+import api from "./api";
 
 function App() {
   const [token, setToken] = useState(
     localStorage.getItem("accessToken") || null,
   );
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    const savedUser = localStorage.getItem("user");
+    // 로컬 스토리지에 저장된 값이 있으면 쓰고, 없으면 null
+    return savedUser ? JSON.parse(savedUser) : null;
+  });
   const [anonymousId] = useState(() => {
     const saved = localStorage.getItem("sudoku_anon_id");
     if (saved) return saved;

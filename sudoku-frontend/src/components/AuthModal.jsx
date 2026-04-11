@@ -82,10 +82,16 @@ const AuthModal = ({
         localStorage.setItem("accessToken", data.accessToken);
         // 🎯 [수정] 이메일뿐만 아니라 객체 형태로 정보를 몽땅 넘겨줍니다.
         // 만약 서버가 nickname을 안 준다면 우선 email을 nickname 대용으로라도 씁니다.
-        onLoginSuccess(data.accessToken, {
+
+        // 🎯 2. [추가] 유저 객체도 로컬 스토리지에 박아넣기 (새로고침 대비)
+        const userObj = {
           email: data.email,
-          nickname: data.nickname || data.email.split("@")[0], // 닉네임 없으면 아이디라도!
-        });
+          nickname: data.nickname || data.email.split("@")[0],
+        };
+        localStorage.setItem("user", JSON.stringify(userObj)); // <--- 이 줄이 핵심!
+
+        onLoginSuccess(data.accessToken, userObj); // App.js의 setToken과 setUser를 동시에 업데이트하는 콜백
+
         onClose(); // 모달 닫기
         alert("로그인되었습니다!");
       } else {

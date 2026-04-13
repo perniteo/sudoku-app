@@ -1,6 +1,7 @@
 package io.github.perniteo.sudoku.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import io.github.perniteo.common.exception.BaseException;
 import io.github.perniteo.sudoku.controller.dto.PlaceResponse;
 import io.github.perniteo.sudoku.domain.GameRecord;
 import io.github.perniteo.sudoku.domain.PlaceResult;
@@ -18,6 +19,8 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -82,46 +85,60 @@ public class SudokuGameService {
 
   @Transactional
   public PlaceResponse placeNumber(String gameId, String userId, int row, int col, int value, long clientTime) {
-    // 조회
-    SudokuGame game = getGame(gameId);
-    // 기록
-    PlaceResult result = game.placeNumber(row, col, value, userId);
+    int maxRetry = 3;
 
-    // 시간 결정 로직
-    long finalTime;
-    if (gameId.startsWith("multi:")) {
-      LocalDateTime start = game.getStartedAt();
-      finalTime = java.time.Duration.between(start, LocalDateTime.now()).getSeconds();
-    } else {
-      finalTime = clientTime;
+    for (int i = 0; i < maxRetry; i++) {
+      try {
+        // 1. 최신 상태 조회 (버전 포함)
+        SudokuGame game = getGame(gameId);
+
+        // 2. 비즈니스 로직 수행
+        PlaceResult result = game.placeNumber(row, col, value, userId);
+
+        // 시간 결정 로직
+        long finalTime;
+        if (gameId.startsWith("multi:")) {
+          LocalDateTime start = game.getStartedAt();
+          finalTime = java.time.Duration.between(start, LocalDateTime.now()).getSeconds();
+        } else {
+          finalTime = clientTime;
+        }
+        game.updateTime(finalTime);
+
+        // 응답 스냅샷 생성
+        PlaceResponse response = new PlaceResponse(
+            result.name(),
+            game.getPuzzleBoard().getCellSnapshots(),
+            game.getLife(),
+            game.getStatus().name(),
+            finalTime,
+            userId
+        );
+
+        // 3. 저장 (Repository 내부에서 버전 비교 수행)
+        if (result == PlaceResult.GAME_OVER || result == PlaceResult.COMPLETED) {
+          saveRecordToDb(gameId, game);
+          gameRepository.saveWithTTL(gameId, game, 600);
+        } else {
+          gameRepository.save(gameId, game); // 🎯 충돌 시 여기서 Exception 발생
+        }
+
+        return response;
+
+      } catch (OptimisticLockingFailureException e) {
+        // 🎯 충돌 발생 시 재시도 로직
+        if (i == maxRetry - 1) {
+          // 3번 다 실패하면 커스텀 예외 던짐
+          throw new BaseException("다른 사용자가 동시에 입력하여 처리에 실패했습니다. 다시 시도해주세요.", HttpStatus.CONFLICT);
+        }
+        // 50ms 대기 후 루프 재시작 (최신 데이터를 다시 가져오기 위함)
+        try { Thread.sleep(50); } catch (InterruptedException ignored) {}
+      }
     }
-
-    game.updateTime(finalTime);
-
-    // 🎯 삭제나 업데이트 전에 최종 상태 스냅샷을 먼저 만듭니다.
-    PlaceResponse response = new PlaceResponse(
-        result.name(),
-        game.getPuzzleBoard().getCellSnapshots(),
-        game.getLife(),
-        game.getStatus().name(),
-        finalTime,
-        userId
-    );
-
-    // single play - gameId = userId
-    if (result == PlaceResult.GAME_OVER || result == PlaceResult.COMPLETED) {
-      // [영구 저장] PostgreSQL
-      saveRecordToDb(gameId, game);
-      // 2. 🎯 Redis 데이터를 지우지 않고 '짧은 수명'으로 다시 저장
-      // (프론트엔드가 최종 화면을 그릴 시간을 벌어줌 + 유저 이탈 시 자동 삭제)
-      gameRepository.saveWithTTL(gameId, game, 600); // 600초(10분) 뒤 자동 삭제
-    } else {
-      // [업데이트] Redis
-      gameRepository.save(gameId, game);
-    }
-
-    return response; // 🎯 조립된 응답을 컨트롤러로 리턴
+    throw new BaseException("서버 혼잡으로 인해 처리가 지연되었습니다.", HttpStatus.SERVICE_UNAVAILABLE);
   }
+
+
 
   private void saveRecordToDb(String userId, SudokuGame game) {
     // 1. 엔티티 생성 (아까 만든 GameRecord)

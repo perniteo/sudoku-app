@@ -16,6 +16,7 @@ public class SudokuGame {
   private int difficulty;
   private long accumulatedSeconds; // 👈 추가: 누적 플레이 시간(초)
   private final long boardId;
+  private long version; // 버전 관리 추가
 //  private final String puzzleJson;
 //  private final String answerJson;
 
@@ -44,11 +45,12 @@ public class SudokuGame {
     this.life = 3;
     this.status = GameStatus.PLAYING;
     this.boardId = boardData.getBoardId();
+    this.version = 0L;
   }
 
   // [추가] Redis DTO로부터 도메인 객체 복구 (Private 생성자 활용)
   private SudokuGame(LocalDateTime startedAt, GameStatus status, SudokuBoard puzzleBoard,
-      SudokuBoard answerBoard, int life, int difficulty, long accumulatedSeconds, long boardId) {
+      SudokuBoard answerBoard, int life, int difficulty, long accumulatedSeconds, long boardId, Long version) {
     this.startedAt = startedAt;
     this.status = status;
     this.puzzleBoard = puzzleBoard;
@@ -57,6 +59,7 @@ public class SudokuGame {
     this.difficulty = difficulty;
     this.accumulatedSeconds = accumulatedSeconds;
     this.boardId = boardId;
+    this.version = version;
   }
 
   // [추가] Redis -> Domain 브릿지 메서드
@@ -69,7 +72,8 @@ public class SudokuGame {
         dto.getLife(),
         dto.getDifficulty(),
         dto.getElapsedTime(),
-        dto.getBoardId()
+        dto.getBoardId(),
+        dto.getVersion() != null ? dto.getVersion() : 0L // 🎯 null 방어 로직
     );
   }
 
@@ -84,8 +88,13 @@ public class SudokuGame {
         .difficulty(this.difficulty)
         .elapsedTime(this.accumulatedSeconds)
         .boardId(this.boardId)
+        .version(this.version) // 🎯 현재 버전 전달
         .build();
   }
+
+  public long getVersion() { return version; }
+
+  public void setVersion(long version) { this.version = version; }
 
   public void updateTime(long time) {
     this.accumulatedSeconds = time;

@@ -9,6 +9,7 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 @Getter
+@Setter
 @NoArgsConstructor(access = AccessLevel.PUBLIC) // Jackson이 빈 객체 만들 때 씀
 @AllArgsConstructor(access = AccessLevel.PUBLIC)
 @Builder
@@ -22,6 +23,7 @@ public class SudokuRedisDto {
   private int difficulty;
   private long elapsedTime; // 실제 플레이한 초(seconds)를 저장할 필드
   private long boardId; // 추가
+  private Long version; // 동시성 제어를 위해 추가
 
 //  // 도메인(SudokuGame) -> Redis DTO 변환
 //  public static SudokuRedisDto from(SudokuGame game) {
